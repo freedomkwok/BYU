@@ -196,7 +196,8 @@ def clean_cuda_info():
     if not torch.cuda.is_available():
         print("❌ CUDA is not available.")
         return
-
+    
+    gc.collect()
     torch.cuda.empty_cache()  # Clears unused memory from PyTorch cache
     torch.cuda.ipc_collect()  # Releases shared memory from inter-process comm
     torch.cuda.reset_peak_memory_stats()
@@ -289,6 +290,7 @@ def select_pretrained_weights(dataset_name):
 #     # Log the full table once
 #     wandb.log({"F1_per_epoch": table})
            
+import gc
             
 def objective(trial):
     try:
@@ -305,7 +307,7 @@ def objective(trial):
             epoch = trainer.epoch
             metrics = trainer.metrics  # after validation step
             loss = trainer.loss_items  # training loss components: box, cls, dfl
-            
+                
             wandb.log({
                 "epoch": epoch,
                 "train/box_loss": loss[0],
@@ -314,14 +316,15 @@ def objective(trial):
                 "val/box_loss": metrics.get("val/box_loss", 0),
                 "val/cls_loss": metrics.get("val/cls_loss", 0),
                 "val/dfl_loss": metrics.get("val/dfl_loss", 0),
-                "metrics/mAP50": metrics.get("metrics/mAP50", 0),
-                "metrics/mAP50-95": metrics.get("metrics/mAP50-95", 0),
+                "metrics/mAP50": metrics.get("metrics/mAP50(B)", 0),
+                "metrics/mAP50-95": metrics.get("metrics/mAP50-95(B)", 0),
                 "metrics/precision": metrics.get("metrics/precision(B)", 0),
                 "metrics/recall": metrics.get("metrics/recall(B)", 0),
             })
+            gc.collect()
             
         trial_params = {
-            "batch": trial.suggest_categorical("batch88", [208]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch216", [216]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
             "patience": trial.suggest_int("patience", 3, 7),
             # step 1
@@ -369,8 +372,8 @@ def objective(trial):
         )
         
         result = plot_dfl_loss_curve(version_dir)
-        
         wandb.finish()
+        
         if result is None:
             return float("inf")
 
