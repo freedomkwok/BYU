@@ -289,10 +289,7 @@ def select_pretrained_weights(dataset_name):
 #     # Log the full table once
 #     wandb.log({"F1_per_epoch": table})
            
-os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
-os.environ["WANDB_DISABLE_CODE"] = "true"  
-os.environ["WANDB_CONSOLE"] = "off" 
-
+            
 def objective(trial):
     try:
         clean_cuda_info()
@@ -324,7 +321,7 @@ def objective(trial):
             })
             
         trial_params = {
-            "batch": trial.suggest_categorical("batch88", [200]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch88", [208]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
             "patience": trial.suggest_int("patience", 3, 7),
             # step 1
@@ -347,20 +344,21 @@ def objective(trial):
             #mixup=trial.suggest_float("mixup", 0.0, 1.0),
         }
         
-        print("wandb1")
+        os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
+        os.environ["WANDB_DISABLE_CODE"] = "true"  
+        os.environ["WANDB_CONSOLE"] = "off"  
         wandb.init(
             project="BYU",
             name=f"trial_{trial.number}",
             config=trial_params,
             reinit=True
         )
-        print("wandb2")
 
         model = YOLO(pretrained_weights_path)
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
         model.train(
             data=yaml_path,
-            epochs=1,
+            epochs=50,
             project=yolo_weights_dir,
             name=f"{version}",
             exist_ok=True,
@@ -369,21 +367,20 @@ def objective(trial):
             device=0,
             **trial_params
         )
-
-        print("skipping")
+        
         result = plot_dfl_loss_curve(version_dir)
+        
+        wandb.finish()
         if result is None:
-            wandb.finish()
             return float("inf")
 
         best_epoch, best_val_loss = result
         print(f"Trial {trial.number}: Best Val DFL Loss = {best_val_loss:.4f} at Epoch {best_epoch}")
-        wandb.finish()
+   
         return best_val_loss
          
     finally:
-        wandb.finish()
-        return float("inf")
+        print(f"finallyy")
         
 def main():
     wandb.login(key=os.getenv("WANDB_API_KEY"))
