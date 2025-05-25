@@ -4,7 +4,7 @@ import argparse
 
 # Define file paths
 
-local_dev = r"C:\Users\Freedomkwok2022\ML_Learn\BYU\notebooks"
+local_dev =  "/workspace/BYU/notebooks" if "WANDB_API_KEY" in os.environ else "C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks"
 google_folder = r"G:\My Drive\BYU\notebooks"
 
 file_pairs = [

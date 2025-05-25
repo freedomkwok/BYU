@@ -1,9 +1,10 @@
 import os
 import shutil
 
-base_dir = r"C:\Users\Freedomkwok2022\ML_Learn\BYU\notebooks\yolo_dataset"
-image_root = os.path.join(base_dir, "images")
-label_root = os.path.join(base_dir, "labels")
+local_dev =  "/workspace/BYU/notebooks" if "WANDB_API_KEY" in os.environ else "C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks"
+yolo_dataset_dir = os.path.join(local_dev, "yolo_dataset")
+image_root = os.path.join(yolo_dataset_dir, "images")
+label_root = os.path.join(yolo_dataset_dir, "labels")
 
 # Create shared/{train,val}/ folders if not exist
 for split in ["train", "val"]:

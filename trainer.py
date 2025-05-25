@@ -48,7 +48,7 @@ BOX_SIZE = 25  # Bounding box size for annotations (in pixels)
 TRAIN_SPLIT = 0.98  # 98% for training, 2% for validation
 
 # Local development paths
-local_dev = "C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks"
+local_dev =  "/workspace/BYU/notebooks" if "WANDB_API_KEY" in os.environ else "C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks"
 yolo_dataset_dir = os.path.join(local_dev, 'yolo_dataset')
 yolo_weights_dir = os.path.join(local_dev, 'yolo_weights')
 output_location = local_dev
@@ -76,7 +76,9 @@ RANDOM_SEED = 42
 random.seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
-        
+
+import wandb
+
 def plot_dfl_loss_curve(run_dir):
     """
     Plot the DFL loss curves for training and validation, marking the best model.
@@ -265,6 +267,7 @@ def get_best_model_for_dataset(dataset_name):
     return None
 
 def clean_cuda_info():
+    print(f"clean_cuda_info\n")
     if not torch.cuda.is_available():
         print("❌ CUDA is not available.")
         return
@@ -318,61 +321,143 @@ def select_pretrained_weights(dataset_name):
     if best_model_info and os.path.exists(best_model_info["weights_path"]):
         print(f"✅ Using best saved model for '{dataset_name}': {best_model_info['weights_path']}")
         return best_model_info["weights_path"]
-    elif latest_best_path:
-        print(f"🕓 No saved best model for '{dataset_name}'")
-        print(f"latest available model: {latest_best_path}")
-        return latest_best_path
+    # elif latest_best_path:
+    #     print(f"🕓 No saved best model for '{dataset_name}'")
+    #     print(f"latest available model: {latest_best_path}")
+    #     return latest_best_path
     else:
-        print("❌ No previous models found — using base weights: yolo11m.pt")
-        return "yolo11m.pt"
-        
-        
-def objective(trial):
-    version = f"motor_detector_{dataset_name}_optuna_trial_{trial.number}"
-    run_dir = os.path.join(yolo_weights_dir, f"{version}")
+        print("❌ No previous models found — using base weights: yolo11s.pt")
+        return "yolo11s.pt"
 
-    model = YOLO(pretrained_weights_path)
-    model.train(
-        data=yaml_path,
-        epochs=65,
-        project=yolo_weights_dir,
-        name=f"{version}",
-        exist_ok=True,
-        patience=10,
-        verbose=False,
-        amp=True,
-        imgsz=trial.suggest_categorical("imgsz", [416, 512, 640]),
-        batch=trial.suggest_categorical("batch", [200]), #local 24,
-        # step 1
-        lr0=trial.suggest_float("lr0", 0.015, 0.02, log=True),
-        lrf=trial.suggest_float("lrf", 1e-2, 3e-1),
-        box=trial.suggest_float("box", 9.5, 10.0),
-        cls=trial.suggest_float("cls", 0.01, 0.1),
-        dfl=trial.suggest_float("dfl", 0.1, 0.4),
-        mosaic=trial.suggest_float("mosaic", 0.0, 0.4),
-        # step 2
-        scale=trial.suggest_float("scale", 0.0, 0.7),
-        translate=trial.suggest_float("mosaic", 0.0, 0.4),
-        # hsv_h=hsv_h,
-        # hsv_s=hsv_s,
-        # hsv_v=hsv_v,
-        flipud=trial.suggest_float("flipud", 0.0, 1.0),
-        fliplr=trial.suggest_float("fliplr", 0.0, 1.0),
-        #bgr=trial.suggest_float("bgr", 0.0, 1.0),
-        #mixup=trial.suggest_float("mixup", 0.0, 1.0),
-        device=0
+def log_final_plots(run_dir: str):
+    final_plots = [
+        "F1_curve.png",
+        "PR_curve.png",
+        "P_curve.png",
+        "R_curve.png",
+        "dfl_loss_curve.png"
+        "confusion_matrix.png"
+    ]
+
+    for plot_name in final_plots:
+        plot_path = os.path.join(run_dir, plot_name)
+        if os.path.exists(plot_path):
+            wandb.log({plot_name: wandb.Image(plot_path)})
+            
+    df = pd.read_csv("results.csv")
+
+    # Calculate F1
+    df["metrics/F1(B)"] = 2 * df["metrics/precision(B)"] * df["metrics/recall(B)"] / (
+        df["metrics/precision(B)"] + df["metrics/recall(B)"]
     )
 
-    result = plot_dfl_loss_curve(run_dir)
-    if result is None:
-        return float("inf")
+    # Create a W&B table
+    table = wandb.Table(columns=["epoch", "precision", "recall", "F1"])
+    for _, row in df.iterrows():
+        table.add_data(
+            row["epoch"],
+            row["metrics/precision(B)"],
+            row["metrics/recall(B)"],
+            row["metrics/F1(B)"]
+        )
 
-    best_epoch, best_val_loss = result
-    print(f"Trial {trial.number}: Best Val DFL Loss = {best_val_loss:.4f} at Epoch {best_epoch}")
-    return best_val_loss        
+    # Log the full table once
+    wandb.log({"F1_per_epoch": table})
+           
+            
+def objective(trial):
+    try:
+        clean_cuda_info()
+        
+        version = f"motor_detector_{dataset_name}_optuna_trial_{trial.number}"
+        run_dir = os.path.join(yolo_weights_dir, f"{version}")
+
+        # run_dir = os.path.join(yolo_weights_dir, f"{version}", "runs")
+        # os.makedirs(yolo_weights_dir, exist_ok=True)
+
+        # Define custom callback
+        def custom_epoch_end_callback(trainer):
+            epoch = trainer.epoch
+            metrics = trainer.metrics  # after validation step
+            loss = trainer.loss_items  # training loss components: box, cls, dfl
+            
+            wandb.log({
+                "epoch": epoch,
+                "train/box_loss": loss[0],
+                "train/cls_loss": loss[1],
+                "train/dfl_loss": loss[2],
+                "val/box_loss": metrics.get("val/box_loss", 0),
+                "val/cls_loss": metrics.get("val/cls_loss", 0),
+                "val/dfl_loss": metrics.get("val/dfl_loss", 0),
+                "metrics/mAP50": metrics.get("metrics/mAP50", 0),
+                "metrics/mAP50-95": metrics.get("metrics/mAP50-95", 0),
+                "metrics/precision": metrics.get("metrics/precision", 0),
+                "metrics/recall": metrics.get("metrics/recall", 0),
+            })
+            
+            for k, v in trainer.metrics.items():
+                print(k, v)
+            
+        trial_params = {
+            "batch": trial.suggest_categorical("batch88", [88]), #600ada: 200 
+            "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
+            # step 1
+            "lr0": trial.suggest_float("lr0", 0.015, 0.02, log=True),
+            "lrf": trial.suggest_float("lrf", 1e-2, 3e-1),
+            "box": trial.suggest_float("box", 7, 8.5),   #7.7
+            "cls": trial.suggest_float("cls", 0.01, 0.55), #0.55
+            # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
+            # mosaic=trial.suggest_float("mosaic", 0.0, 0.4),
+            # step 2
+            # "scale": trial.suggest_float("scale", 0.0, 0.7),
+            # "translate": trial.suggest_float("mosaic", 0.0, 0.4),
+            # hsv_h=hsv_h,
+            # hsv_s=hsv_s,
+            # hsv_v=hsv_v,
+            # "flipud": trial.suggest_float("flipud", 0.0, 1.0),
+            # "fliplr": trial.suggest_float("fliplr", 0.0, 1.0),
+            #bgr=trial.suggest_float("bgr", 0.0, 1.0),
+            #mixup=trial.suggest_float("mixup", 0.0, 1.0),
+        }
+
+        wandb.init(
+            project="BYU",
+            name=f"trial_{trial.number}",
+            config=trial_params,
+            reinit=True
+        )
+        
+        model = YOLO(pretrained_weights_path)
+        model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
+        model.train(
+            data=yaml_path,
+            epochs=50,
+            project=yolo_weights_dir,
+            name=f"{version}",
+            exist_ok=True,
+            patience=6,
+            verbose=False,
+            amp=True,
+            device=0,
+            **trial_params
+        )
+
+        result = plot_dfl_loss_curve(run_dir)
+        if result is None:
+            wandb.finish()
+            return float("inf")
+
+        best_epoch, best_val_loss = result
+        print(f"Trial {trial.number}: Best Val DFL Loss = {best_val_loss:.4f} at Epoch {best_epoch}")
+        wandb.finish()
+        return best_val_loss
+         
+    finally:
+        wandb.finish()
+        return float("inf")
         
 def main():
-    clean_cuda_info()
+    wandb.login(key=os.getenv("WANDB_API_KEY"))
     global yaml_path, pretrained_weights_path, dataset_name
     print("Starting YOLO Optuna parameter tuning...")
     dataset_name = "shared"
