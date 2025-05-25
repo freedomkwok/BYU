@@ -1,0 +1,5 @@
+names:
+  0: motor
+path: C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks\yolo_dataset
+train: C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks\yolo_dataset\images\shared\train
+val: C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks\yolo_dataset\images\shared\val

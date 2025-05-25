@@ -1,0 +1,13 @@
+numpy
+pandas
+matplotlib
+seaborn
+plotly
+Pillow
+tqdm
+pyyaml
+scikit-learn
+opencv-python-headless
+torch
+ultralytics
+optuna
