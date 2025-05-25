@@ -416,11 +416,14 @@ def objective(trial):
             #bgr=trial.suggest_float("bgr", 0.0, 1.0),
             #mixup=trial.suggest_float("mixup", 0.0, 1.0),
         }
-
+        
+        os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
         wandb.init(
             project="BYU",
             name=f"trial_{trial.number}",
             config=trial_params,
+            sync_tensorboard=False,
+            save_code=False,
             reinit=True
         )
         
