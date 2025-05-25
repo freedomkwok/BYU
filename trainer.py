@@ -76,7 +76,7 @@ random.seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 
-# import wandb
+import wandb
 
 def plot_dfl_loss_curve(run_dir):
     results_csv = os.path.join(run_dir, 'results.csv')
@@ -289,7 +289,10 @@ def select_pretrained_weights(dataset_name):
 #     # Log the full table once
 #     wandb.log({"F1_per_epoch": table})
            
-            
+os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
+os.environ["WANDB_DISABLE_CODE"] = "true"  
+os.environ["WANDB_CONSOLE"] = "off" 
+
 def objective(trial):
     try:
         clean_cuda_info()
@@ -306,22 +309,22 @@ def objective(trial):
             metrics = trainer.metrics  # after validation step
             loss = trainer.loss_items  # training loss components: box, cls, dfl
             
-            # wandb.log({
-            #     "epoch": epoch,
-            #     "train/box_loss": loss[0],
-            #     "train/cls_loss": loss[1],
-            #     "train/dfl_loss": loss[2],
-            #     "val/box_loss": metrics.get("val/box_loss", 0),
-            #     "val/cls_loss": metrics.get("val/cls_loss", 0),
-            #     "val/dfl_loss": metrics.get("val/dfl_loss", 0),
-            #     "metrics/mAP50": metrics.get("metrics/mAP50", 0),
-            #     "metrics/mAP50-95": metrics.get("metrics/mAP50-95", 0),
-            #     "metrics/precision": metrics.get("metrics/precision(B)", 0),
-            #     "metrics/recall": metrics.get("metrics/recall(B)", 0),
-            # })
+            wandb.log({
+                "epoch": epoch,
+                "train/box_loss": loss[0],
+                "train/cls_loss": loss[1],
+                "train/dfl_loss": loss[2],
+                "val/box_loss": metrics.get("val/box_loss", 0),
+                "val/cls_loss": metrics.get("val/cls_loss", 0),
+                "val/dfl_loss": metrics.get("val/dfl_loss", 0),
+                "metrics/mAP50": metrics.get("metrics/mAP50", 0),
+                "metrics/mAP50-95": metrics.get("metrics/mAP50-95", 0),
+                "metrics/precision": metrics.get("metrics/precision(B)", 0),
+                "metrics/recall": metrics.get("metrics/recall(B)", 0),
+            })
             
         trial_params = {
-            "batch": trial.suggest_categorical("batch88", [88]), #600ada: 200 
+            "batch": trial.suggest_categorical("batch88", [200]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
             "patience": trial.suggest_int("patience", 3, 7),
             # step 1
@@ -345,23 +348,19 @@ def objective(trial):
         }
         
         print("wandb1")
-        # os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
-        # wandb.init(
-        #     project="BYU",
-        #     name=f"trial_{trial.number}",
-        #     config=trial_params,
-        #     sync_tensorboard=False,
-        #     save_code=False,
-        #     # settings=wandb.Settings(_disable_artifacts=True),
-        #     reinit=True
-        # )
+        wandb.init(
+            project="BYU",
+            name=f"trial_{trial.number}",
+            config=trial_params,
+            reinit=True
+        )
         print("wandb2")
 
         model = YOLO(pretrained_weights_path)
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
         model.train(
             data=yaml_path,
-            epochs=50,
+            epochs=1,
             project=yolo_weights_dir,
             name=f"{version}",
             exist_ok=True,
@@ -374,20 +373,20 @@ def objective(trial):
         print("skipping")
         result = plot_dfl_loss_curve(version_dir)
         if result is None:
-            # wandb.finish()
+            wandb.finish()
             return float("inf")
 
         best_epoch, best_val_loss = result
         print(f"Trial {trial.number}: Best Val DFL Loss = {best_val_loss:.4f} at Epoch {best_epoch}")
-        # wandb.finish()
+        wandb.finish()
         return best_val_loss
          
     finally:
-        # wandb.finish()
+        wandb.finish()
         return float("inf")
         
 def main():
-    # wandb.login(key=os.getenv("WANDB_API_KEY"))
+    wandb.login(key=os.getenv("WANDB_API_KEY"))
     global yaml_path, pretrained_weights_path, dataset_name
     print("Starting YOLO Optuna parameter tuning...")
     dataset_name = "shared"
