@@ -76,15 +76,9 @@ random.seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 
-import wandb
+# import wandb
 
 def plot_dfl_loss_curve(run_dir):
-    """
-    Plot the DFL loss curves for training and validation, marking the best model.
-    
-    Args:
-        run_dir (str): Directory where the training results are stored.
-    """
     results_csv = os.path.join(run_dir, 'results.csv')
     if not os.path.exists(results_csv):
         print(f"Results file not found at {results_csv}")
@@ -123,73 +117,6 @@ def plot_dfl_loss_curve(run_dir):
     plt.close()
     
     return best_epoch, best_val_loss
-
-def predict_on_samples(model, val_dir, num_samples=4, conf:float=0.25):
-    """
-    Run predictions on random validation samples and display results.
-    
-    Args:
-        model: Trained YOLO model.
-        num_samples (int): Number of random samples to test.
-    """
-    # val_dir os.path.join(yolo_dataset_dir, 'images', 'val')
-    if not os.path.exists(val_dir):
-        print(f"Validation directory not found at {val_dir}")
-        val_dir = os.path.join(yolo_dataset_dir, 'images', 'train')
-        print(f"Using train directory for predictions instead: {val_dir}")
-        
-    if not os.path.exists(val_dir):
-        print("No images directory found for predictions")
-        return
-    
-    val_images = os.listdir(val_dir)
-    if len(val_images) == 0:
-        print("No images found for prediction")
-        return
-    
-    num_samples = min(num_samples, len(val_images))
-    samples = random.sample(val_images, num_samples)
-    
-    fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-    axes = axes.flatten()
-    
-    for i, img_file in enumerate(samples):
-        if i >= len(axes):
-            break
-            
-        img_path = os.path.join(val_dir, img_file)
-        results = model.predict(img_path, conf=float(conf))[0]
-        img = Image.open(img_path)
-        axes[i].imshow(np.array(img), cmap='gray')
-        
-        # Draw ground truth box if available (extracted from filename)
-        try:
-            parts = img_file.split('_')
-            y_part = [p for p in parts if p.startswith('y')]
-            x_part = [p for p in parts if p.startswith('x')]
-            if y_part and x_part:
-                y_gt = int(y_part[0][1:])
-                x_gt = int(x_part[0][1:].split('.')[0])
-                rect_gt = Rectangle((x_gt - BOX_SIZE//2, y_gt - BOX_SIZE//2), BOX_SIZE, BOX_SIZE,
-                                      linewidth=1, edgecolor='g', facecolor='none')
-                axes[i].add_patch(rect_gt)
-        except:
-            pass
-        
-        if len(results.boxes) > 0:
-            boxes = results.boxes.xyxy.cpu().numpy()
-            confs = results.boxes.conf.cpu().numpy()
-            for box, conf in zip(boxes, confs):
-                x1, y1, x2, y2 = box
-                rect_pred = Rectangle((x1, y1), x2-x1, y2-y1, linewidth=1, edgecolor='r', facecolor='none')
-                axes[i].add_patch(rect_pred)
-                axes[i].text(x1, y1-5, f'{conf:.2f}', color='red')
-        
-        axes[i].set_title(f"Image: {img_file}\nGT (green) vs Pred (red)")
-    
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_location, 'predictions.png'))
-    plt.show()
 
 def prepare_dataset(source):
     """
@@ -371,7 +298,7 @@ def objective(trial):
         version_dir = os.path.join(yolo_weights_dir, f"{version}")
 
         # run_dir = os.path.join(yolo_weights_dir, f"{version}", "runs")
-        # os.makedirs(yolo_weights_dir, exist_ok=True)
+        os.makedirs(version_dir, exist_ok=True)
 
         # Define custom callback
         def custom_epoch_end_callback(trainer):
@@ -379,19 +306,19 @@ def objective(trial):
             metrics = trainer.metrics  # after validation step
             loss = trainer.loss_items  # training loss components: box, cls, dfl
             
-            wandb.log({
-                "epoch": epoch,
-                "train/box_loss": loss[0],
-                "train/cls_loss": loss[1],
-                "train/dfl_loss": loss[2],
-                "val/box_loss": metrics.get("val/box_loss", 0),
-                "val/cls_loss": metrics.get("val/cls_loss", 0),
-                "val/dfl_loss": metrics.get("val/dfl_loss", 0),
-                "metrics/mAP50": metrics.get("metrics/mAP50", 0),
-                "metrics/mAP50-95": metrics.get("metrics/mAP50-95", 0),
-                "metrics/precision": metrics.get("metrics/precision(B)", 0),
-                "metrics/recall": metrics.get("metrics/recall(B)", 0),
-            })
+            # wandb.log({
+            #     "epoch": epoch,
+            #     "train/box_loss": loss[0],
+            #     "train/cls_loss": loss[1],
+            #     "train/dfl_loss": loss[2],
+            #     "val/box_loss": metrics.get("val/box_loss", 0),
+            #     "val/cls_loss": metrics.get("val/cls_loss", 0),
+            #     "val/dfl_loss": metrics.get("val/dfl_loss", 0),
+            #     "metrics/mAP50": metrics.get("metrics/mAP50", 0),
+            #     "metrics/mAP50-95": metrics.get("metrics/mAP50-95", 0),
+            #     "metrics/precision": metrics.get("metrics/precision(B)", 0),
+            #     "metrics/recall": metrics.get("metrics/recall(B)", 0),
+            # })
             
         trial_params = {
             "batch": trial.suggest_categorical("batch88", [88]), #600ada: 200 
@@ -417,16 +344,19 @@ def objective(trial):
             #mixup=trial.suggest_float("mixup", 0.0, 1.0),
         }
         
-        os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
-        wandb.init(
-            project="BYU",
-            name=f"trial_{trial.number}",
-            config=trial_params,
-            sync_tensorboard=False,
-            save_code=False,
-            reinit=True
-        )
-        
+        print("wandb1")
+        # os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
+        # wandb.init(
+        #     project="BYU",
+        #     name=f"trial_{trial.number}",
+        #     config=trial_params,
+        #     sync_tensorboard=False,
+        #     save_code=False,
+        #     # settings=wandb.Settings(_disable_artifacts=True),
+        #     reinit=True
+        # )
+        print("wandb2")
+
         model = YOLO(pretrained_weights_path)
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
         model.train(
@@ -440,28 +370,29 @@ def objective(trial):
             device=0,
             **trial_params
         )
-        
+
+        print("skipping")
         result = plot_dfl_loss_curve(version_dir)
         if result is None:
-            wandb.finish()
+            # wandb.finish()
             return float("inf")
 
         best_epoch, best_val_loss = result
         print(f"Trial {trial.number}: Best Val DFL Loss = {best_val_loss:.4f} at Epoch {best_epoch}")
-        wandb.finish()
+        # wandb.finish()
         return best_val_loss
          
     finally:
-        wandb.finish()
+        # wandb.finish()
         return float("inf")
         
 def main():
-    wandb.login(key=os.getenv("WANDB_API_KEY"))
+    # wandb.login(key=os.getenv("WANDB_API_KEY"))
     global yaml_path, pretrained_weights_path, dataset_name
     print("Starting YOLO Optuna parameter tuning...")
     dataset_name = "shared"
  
-    pretrained_weights_path = select_pretrained_weights(dataset_name)
+    pretrained_weights_path = select_pretrained_weights("shared")
 
     yaml_path, *_ = prepare_dataset("shared")
 
