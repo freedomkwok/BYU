@@ -51,7 +51,6 @@ TRAIN_SPLIT = 0.98  # 98% for training, 2% for validation
 local_dev =  "/workspace/BYU/notebooks" if "WANDB_API_KEY" in os.environ else "C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks"
 yolo_dataset_dir = os.path.join(local_dev, 'yolo_dataset')
 yolo_weights_dir = os.path.join(local_dev, 'yolo_weights')
-output_location = local_dev
 
 # Create necessary directories
 os.makedirs(yolo_weights_dir, exist_ok=True)
@@ -119,7 +118,6 @@ def plot_dfl_loss_curve(run_dir):
     
     plot_path = os.path.join(run_dir, 'dfl_loss_curve.png')
     plt.savefig(plot_path)
-    plt.savefig(os.path.join(output_location, 'dfl_loss_curve.png'))
     
     print(f"Loss curve saved to {plot_path}")
     plt.close()
@@ -329,40 +327,40 @@ def select_pretrained_weights(dataset_name):
         print("❌ No previous models found — using base weights: yolo11s.pt")
         return "yolo11s.pt"
 
-def log_final_plots(run_dir: str):
-    final_plots = [
-        "F1_curve.png",
-        "PR_curve.png",
-        "P_curve.png",
-        "R_curve.png",
-        "dfl_loss_curve.png"
-        "confusion_matrix.png"
-    ]
+# def log_final_plots(run_dir: str):
+#     final_plots = [
+#         "F1_curve.png",
+#         "PR_curve.png",
+#         "P_curve.png",
+#         "R_curve.png",
+#         "dfl_loss_curve.png"
+#         "confusion_matrix.png"
+#     ]
 
-    for plot_name in final_plots:
-        plot_path = os.path.join(run_dir, plot_name)
-        if os.path.exists(plot_path):
-            wandb.log({plot_name: wandb.Image(plot_path)})
+#     for plot_name in final_plots:
+#         plot_path = os.path.join(run_dir, plot_name)
+#         if os.path.exists(plot_path):
+#             wandb.log({plot_name: wandb.Image(plot_path)})
             
-    df = pd.read_csv("results.csv")
+#     df = pd.read_csv("results.csv")
 
-    # Calculate F1
-    df["metrics/F1(B)"] = 2 * df["metrics/precision(B)"] * df["metrics/recall(B)"] / (
-        df["metrics/precision(B)"] + df["metrics/recall(B)"]
-    )
+#     # Calculate F1
+#     df["metrics/F1(B)"] = 2 * df["metrics/precision(B)"] * df["metrics/recall(B)"] / (
+#         df["metrics/precision(B)"] + df["metrics/recall(B)"]
+#     )
 
-    # Create a W&B table
-    table = wandb.Table(columns=["epoch", "precision", "recall", "F1"])
-    for _, row in df.iterrows():
-        table.add_data(
-            row["epoch"],
-            row["metrics/precision(B)"],
-            row["metrics/recall(B)"],
-            row["metrics/F1(B)"]
-        )
+#     # Create a W&B table
+#     table = wandb.Table(columns=["epoch", "precision", "recall", "F1"])
+#     for _, row in df.iterrows():
+#         table.add_data(
+#             row["epoch"],
+#             row["metrics/precision(B)"],
+#             row["metrics/recall(B)"],
+#             row["metrics/F1(B)"]
+#         )
 
-    # Log the full table once
-    wandb.log({"F1_per_epoch": table})
+#     # Log the full table once
+#     wandb.log({"F1_per_epoch": table})
            
             
 def objective(trial):
@@ -370,7 +368,7 @@ def objective(trial):
         clean_cuda_info()
         
         version = f"motor_detector_{dataset_name}_optuna_trial_{trial.number}"
-        run_dir = os.path.join(yolo_weights_dir, f"{version}")
+        version_dir = os.path.join(yolo_weights_dir, f"{version}")
 
         # run_dir = os.path.join(yolo_weights_dir, f"{version}", "runs")
         # os.makedirs(yolo_weights_dir, exist_ok=True)
@@ -391,31 +389,30 @@ def objective(trial):
                 "val/dfl_loss": metrics.get("val/dfl_loss", 0),
                 "metrics/mAP50": metrics.get("metrics/mAP50", 0),
                 "metrics/mAP50-95": metrics.get("metrics/mAP50-95", 0),
-                "metrics/precision": metrics.get("metrics/precision", 0),
-                "metrics/recall": metrics.get("metrics/recall", 0),
+                "metrics/precision": metrics.get("metrics/precision(B)", 0),
+                "metrics/recall": metrics.get("metrics/recall(B)", 0),
             })
-            
-            for k, v in trainer.metrics.items():
-                print(k, v)
             
         trial_params = {
             "batch": trial.suggest_categorical("batch88", [88]), #600ada: 200 
             "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
+            "patience": trial.suggest_int("patience", 3, 7),
             # step 1
             "lr0": trial.suggest_float("lr0", 0.015, 0.02, log=True),
             "lrf": trial.suggest_float("lrf", 1e-2, 3e-1),
             "box": trial.suggest_float("box", 7, 8.5),   #7.7
             "cls": trial.suggest_float("cls", 0.01, 0.55), #0.55
             # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
-            # mosaic=trial.suggest_float("mosaic", 0.0, 0.4),
+            "mosaic": trial.suggest_float("mosaic", 0.1, 0.5),
+            "warmup_epochs": trial.suggest_int("warmup_epochs", 1, 3),
             # step 2
             # "scale": trial.suggest_float("scale", 0.0, 0.7),
             # "translate": trial.suggest_float("mosaic", 0.0, 0.4),
             # hsv_h=hsv_h,
             # hsv_s=hsv_s,
             # hsv_v=hsv_v,
-            # "flipud": trial.suggest_float("flipud", 0.0, 1.0),
-            # "fliplr": trial.suggest_float("fliplr", 0.0, 1.0),
+            "flipud": trial.suggest_float("flipud", 0.0, 1.0),
+            "fliplr": trial.suggest_float("fliplr", 0.0, 1.0),
             #bgr=trial.suggest_float("bgr", 0.0, 1.0),
             #mixup=trial.suggest_float("mixup", 0.0, 1.0),
         }
@@ -435,14 +432,13 @@ def objective(trial):
             project=yolo_weights_dir,
             name=f"{version}",
             exist_ok=True,
-            patience=6,
             verbose=False,
             amp=True,
             device=0,
             **trial_params
         )
-
-        result = plot_dfl_loss_curve(run_dir)
+        
+        result = plot_dfl_loss_curve(version_dir)
         if result is None:
             wandb.finish()
             return float("inf")
