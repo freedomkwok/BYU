@@ -8,8 +8,8 @@ label_root = os.path.join(yolo_dataset_dir, "labels")
 
 # Create shared/{train,val}/ folders if not exist
 for split in ["train", "val"]:
-    os.makedirs(os.path.join(image_root, "shared", split), exist_ok=True)
-    os.makedirs(os.path.join(label_root, "shared", split), exist_ok=True)
+    os.makedirs(os.path.join(image_root, "shared_byu_100", split), exist_ok=True)
+    os.makedirs(os.path.join(label_root, "shared_byu_100", split), exist_ok=True)
 
 def copy_dataset_to_shared(root_path, shared_path, dataset_names, split_types):
     for dataset in dataset_names:
@@ -19,7 +19,7 @@ def copy_dataset_to_shared(root_path, shared_path, dataset_names, split_types):
             if not os.path.exists(src_dir):
                 print(f"❌ Source not found: {src_dir}")
                 continue
-            for filename in os.listdir(src_dir):
+            for filename in os.listdir(src_dir)[:500]:
                 src_file = os.path.join(src_dir, filename)
                 new_filename = f"{dataset}_{filename}"
                 dst_file = os.path.join(dst_dir, new_filename)
@@ -27,15 +27,16 @@ def copy_dataset_to_shared(root_path, shared_path, dataset_names, split_types):
                 print(f"✅ Copied: {src_file} -> {dst_file}")
 
 # Define datasets and split types
-datasets = ["BYU", "cryoet", "BYU_cryoet2"]
-splits = ["train", "val"]
+
+datasets = ["cryoet_007"]
+splits = ["val"]
 
 # Copy for images
 print("📁 Copying images...")
-copy_dataset_to_shared(image_root, os.path.join(image_root, "shared"), datasets, splits)
+copy_dataset_to_shared(image_root, os.path.join(image_root, "shared_byu_100"), datasets, splits)
 
 # Copy for labels
 print("📁 Copying labels...")
-copy_dataset_to_shared(label_root, os.path.join(label_root, "shared"), datasets, splits)
+copy_dataset_to_shared(label_root, os.path.join(label_root, "shared_byu_100"), datasets, splits)
 
 print("✅ All files copied to shared/train and shared/val folders.")
