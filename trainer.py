@@ -225,7 +225,7 @@ def run_optuna_tuning(dataset_name):
     direction="minimize",
     load_if_exists=True,
 )
-    study.optimize(objective, n_trials=10)
+    study.optimize(objective, n_trials=60)
 
     best_trial = study.best_trial
     best_version = f"motor_detector_{dataset_name}_optuna_trial_{best_trial.number}"
@@ -291,7 +291,11 @@ def select_pretrained_weights(dataset_name):
 #     wandb.log({"F1_per_epoch": table})
            
 import gc
-            
+def compute_f1_score(precision, recall):
+    if (precision + recall) == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
 def objective(trial):
     try:
         clean_cuda_info()
@@ -307,7 +311,10 @@ def objective(trial):
             epoch = trainer.epoch
             metrics = trainer.metrics  # after validation step
             loss = trainer.loss_items  # training loss components: box, cls, dfl
-                
+            precision = metrics.get("metrics/precision(B)", 0.01)
+            recall = metrics.get("metrics/recall(B)", 0.99)
+            f1 = compute_f1_score(precision, recall)
+
             wandb.log({
                 "epoch": epoch,
                 "train/box_loss": loss[0],
@@ -320,31 +327,33 @@ def objective(trial):
                 "metrics/mAP50-95": metrics.get("metrics/mAP50-95(B)", 0),
                 "metrics/precision": metrics.get("metrics/precision(B)", 0),
                 "metrics/recall": metrics.get("metrics/recall(B)", 0),
+                "metrics/f1": f1
             })
+
             gc.collect()
             
         trial_params = {
-            "batch": trial.suggest_categorical("batch216", [216]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch2221", [240, 248]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
-            "patience": trial.suggest_int("patience", 3, 7),
+            "patience": trial.suggest_int("patience", 5, 12),
             # step 1
-            "lr0": trial.suggest_float("lr0", 0.015, 0.02, log=True),
-            "lrf": trial.suggest_float("lrf", 1e-2, 3e-1),
-            "box": trial.suggest_float("box", 7, 8.5),   #7.7
-            "cls": trial.suggest_float("cls", 0.01, 0.55), #0.55
+            "lr0": trial.suggest_float("lr0", 0.01, 0.025, log=True),
+            "lrf": trial.suggest_float("lrf", 0.05, 0.18),
+            "box": trial.suggest_float("box", 7.5, 9),   #7.7
+            "cls": trial.suggest_float("cls", 0.1, 0.35), #0.55
             # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
-            "mosaic": trial.suggest_float("mosaic", 0.1, 0.5),
-            "warmup_epochs": trial.suggest_int("warmup_epochs", 1, 3),
+            "mosaic": trial.suggest_float("mosaic", 0.02, 0.4),
+            "warmup_epochs": trial.suggest_int("warmup_epochs", 4, 7),
             # step 2
             # "scale": trial.suggest_float("scale", 0.0, 0.7),
             # "translate": trial.suggest_float("mosaic", 0.0, 0.4),
             # hsv_h=hsv_h,
             # hsv_s=hsv_s,
             # hsv_v=hsv_v,
-            "flipud": trial.suggest_float("flipud", 0.0, 1.0),
-            "fliplr": trial.suggest_float("fliplr", 0.0, 1.0),
+            "flipud": trial.suggest_float("flipud", 0.0, 0.5),
+            "fliplr": trial.suggest_float("fliplr", 0.0, 0.5),
             #bgr=trial.suggest_float("bgr", 0.0, 1.0),
-            #mixup=trial.suggest_float("mixup", 0.0, 1.0),
+            "mixup": trial.suggest_float("mixup", 0.0, 0.3),
         }
         
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
