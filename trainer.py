@@ -20,12 +20,6 @@ from ultralytics import YOLO
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-import cv2
-from contextlib import nullcontext
-from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 import argparse
 
@@ -231,7 +225,7 @@ def run_optuna_tuning(dataset_name, args):
         direction="minimize",
         load_if_exists=True,
     )
-    study.optimize(partial(objective, dataset_name=dataset_name), n_trials=60)
+    study.optimize(partial(objective, dataset_name=dataset_name), n_trials=70)
 
     best_trial = study.best_trial
     best_version = f"motor_detector_{dataset_name}_optuna_trial_{best_trial.number}"
@@ -304,8 +298,6 @@ def compute_f1_score(precision, recall):
 
 def objective(trial, dataset_name):
     try:
-        print(trial)
-        print(dataset_name)
         clean_cuda_info()
 
         version = f"motor_detector_{dataset_name}_optuna_trial_{trial.number}"
@@ -335,13 +327,13 @@ def objective(trial, dataset_name):
                 "metrics/mAP50-95": metrics.get("metrics/mAP50-95(B)", 0),
                 "metrics/precision": metrics.get("metrics/precision(B)", 0),
                 "metrics/recall": metrics.get("metrics/recall(B)", 0),
-                "metrics/f1": f1
+                "metrics/f1": f1,
             })
 
             gc.collect()
             
         trial_params = {
-            "batch": trial.suggest_categorical("batchx", [240, 248]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batchx2", [18, 232, 240]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
             "patience": trial.suggest_int("patience", 7, 12),
             # step 1
@@ -369,8 +361,8 @@ def objective(trial, dataset_name):
         os.environ["WANDB_CONSOLE"] = "off"  
         wandb.init(
             project="BYU",
-            name=f"trial_{trial.number}",
-            tags=dataset_name,
+            name=f"{trial.number}",
+            tags=[dataset_name],
             config=trial_params,
             reinit=True
         )
@@ -379,7 +371,7 @@ def objective(trial, dataset_name):
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
         model.train(
             data=yaml_path,
-            epochs=50,
+            epochs=60,
             project=yolo_weights_dir,
             name=f"{version}",
             exist_ok=True,
@@ -421,7 +413,7 @@ def main():
     
     global yaml_path, pretrained_weights_path
     print("Starting YOLO Optuna parameter tuning...")
-    dataset_name = args.dataset or "shared"
+    dataset_name = args.dataset or "shared_007"
  
     pretrained_weights_path = select_pretrained_weights(dataset_name)  ## load weight
 
