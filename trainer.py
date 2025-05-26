@@ -225,7 +225,7 @@ def run_optuna_tuning(dataset_name, args):
         direction="minimize",
         load_if_exists=True,
     )
-    study.optimize(partial(objective, dataset_name=dataset_name), n_trials=70)
+    study.optimize(partial(objective, dataset_name=dataset_name), n_trials=90)
 
     best_trial = study.best_trial
     best_version = f"motor_detector_{dataset_name}_optuna_trial_{best_trial.number}"
@@ -298,27 +298,29 @@ def objective(trial, dataset_name):
             gc.collect()
             
         trial_params = {
-            "batch": trial.suggest_categorical("batchx21", [232, 240]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batchx22", [240, 248]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
-            "patience": trial.suggest_int("patience", 9, 12),
+            "patience": trial.suggest_int("patience", 9, 16),
             # step 1
-            "lr0": trial.suggest_float("lr0", 0.01, 0.025, log=True),
-            "lrf": trial.suggest_float("lrf", 0.05, 0.18),
-            "box": trial.suggest_float("box", 7.5, 9.5),   #7.7
-            "cls": trial.suggest_float("cls", 0.1, 0.35), #0.55
+            "lr0": trial.suggest_float("lr0", 0.005, 0.025, log=True),
+            "lrf": trial.suggest_float("lrf", 0.03, 0.12),
+            "box": trial.suggest_float("box", 7.5, 9.7),   #7.7
+            "cls": trial.suggest_float("cls", 0.05, 0.22), #0.55
             # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
-            "mosaic": trial.suggest_float("mosaic", 0.02, 0.4),
-            "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 15),
+            "mosaic": trial.suggest_float("mosaic", 0.08, 0.4),
+            "warmup_epochs": trial.suggest_int("warmup_epochs", 7, 16),
             # step 2
-            # "scale": trial.suggest_float("scale", 0.0, 0.7),
-            # "translate": trial.suggest_float("mosaic", 0.0, 0.4),
+            "scale": trial.suggest_float("scale", 0.08, 0.5),
+            "translate": trial.suggest_float("mosaic", 0.08, 0.5),
             # hsv_h=hsv_h,
-            # hsv_s=hsv_s,
+            "hsv_s": trial.suggest_float("hsv_s", 0.0, 0.45),
             # hsv_v=hsv_v,
             "flipud": trial.suggest_float("flipud", 0.0, 0.45),
             "fliplr": trial.suggest_float("fliplr", 0.0, 0.45),
             #bgr=trial.suggest_float("bgr", 0.0, 1.0),
-            "mixup": trial.suggest_float("mixup", 0.0, 0.45),
+            "mixup": trial.suggest_float("mixup", 0.3, 0.7),
+            "degrees": trial.suggest_float("degrees", 0.0, 30.0),
+            "blur": trial.suggest_float("blur", 0.0, 0.08)
         }
         
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
@@ -336,13 +338,15 @@ def objective(trial, dataset_name):
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
         model.train(
             data=yaml_path,
-            epochs=80,
+            epochs=100,
             project=yolo_weights_dir,
             name=f"{version}",
+            single_cls=True,
             exist_ok=True,
             verbose=False,
             amp=True,
             device=0,
+            #trainer=MyTrainer,  # 👈 this is the key
             **trial_params
         )
         

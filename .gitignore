@@ -6,3 +6,5 @@ yolo_dateset/
 yolo_weights/
 *.db
 *.zip
+.env
+.vscode/
