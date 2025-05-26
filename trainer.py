@@ -26,6 +26,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import cv2
 from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+import argparse
 
 # Set seeds for reproducibility
 np.random.seed(42)
@@ -218,14 +220,18 @@ def clean_cuda_info():
         print(f"  - Cached Memory    : {torch.cuda.memory_reserved(i) / 1e6:.2f} MB")
         print(f"  - Max Memory Alloc : {torch.cuda.max_memory_allocated(i) / 1e6:.2f} MB\n")
 
-def run_optuna_tuning(dataset_name):
+def run_optuna_tuning(dataset_name, args):
+    storage_name = f'sqlite:///{args.storage or "yolo_hpo"}.db'
+    study_name =  args.storage or "yolo_hpo"
+    
+    print(f"🎯Loading Study: {study_name} storage:{storage_name} \n")
     study = optuna.create_study(
-    study_name="yolo_hpo",
-    storage="sqlite:///yolo_hpo.db",
-    direction="minimize",
-    load_if_exists=True,
-)
-    study.optimize(objective, n_trials=60)
+        study_name=study_name,
+        storage=storage_name,
+        direction="minimize",
+        load_if_exists=True,
+    )
+    study.optimize(partial(objective, dataset_name=dataset_name), n_trials=60)
 
     best_trial = study.best_trial
     best_version = f"motor_detector_{dataset_name}_optuna_trial_{best_trial.number}"
@@ -296,10 +302,12 @@ def compute_f1_score(precision, recall):
         return 0.0
     return 2 * precision * recall / (precision + recall)
 
-def objective(trial):
+def objective(trial, dataset_name):
     try:
+        print(trial)
+        print(dataset_name)
         clean_cuda_info()
-        
+
         version = f"motor_detector_{dataset_name}_optuna_trial_{trial.number}"
         version_dir = os.path.join(yolo_weights_dir, f"{version}")
 
@@ -333,13 +341,13 @@ def objective(trial):
             gc.collect()
             
         trial_params = {
-            "batch": trial.suggest_categorical("batch2221", [240, 248]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batchx", [240, 248]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
-            "patience": trial.suggest_int("patience", 5, 12),
+            "patience": trial.suggest_int("patience", 7, 12),
             # step 1
             "lr0": trial.suggest_float("lr0", 0.01, 0.025, log=True),
             "lrf": trial.suggest_float("lrf", 0.05, 0.18),
-            "box": trial.suggest_float("box", 7.5, 9),   #7.7
+            "box": trial.suggest_float("box", 7.5, 9.5),   #7.7
             "cls": trial.suggest_float("cls", 0.1, 0.35), #0.55
             # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
             "mosaic": trial.suggest_float("mosaic", 0.02, 0.4),
@@ -353,7 +361,7 @@ def objective(trial):
             "flipud": trial.suggest_float("flipud", 0.0, 0.5),
             "fliplr": trial.suggest_float("fliplr", 0.0, 0.5),
             #bgr=trial.suggest_float("bgr", 0.0, 1.0),
-            "mixup": trial.suggest_float("mixup", 0.0, 0.3),
+            "mixup": trial.suggest_float("mixup", 0.2, 0.5),
         }
         
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
@@ -362,6 +370,7 @@ def objective(trial):
         wandb.init(
             project="BYU",
             name=f"trial_{trial.number}",
+            tags=dataset_name,
             config=trial_params,
             reinit=True
         )
@@ -392,19 +401,33 @@ def objective(trial):
         return best_val_loss
          
     finally:
-        print(f"finallyy")
-        
-def main():
+        print(f"finally")
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="YOLO Optuna Tuning")
+    parser.add_argument("--study", type=str, help="(Optional) study name")
+    parser.add_argument("--storage", type=str, help="(Optional) storage name")
+    parser.add_argument("--dataset", type=str, help="(Optional) Dataset name")
+    return parser.parse_args()
+
+def setup_wandb():
+    if "WANDB_API_KEY" not in os.environ:
+        os.environ["WANDB_MODE"] = "disabled"
     wandb.login(key=os.getenv("WANDB_API_KEY"))
-    global yaml_path, pretrained_weights_path, dataset_name
+    
+def main():
+    args = parse_args()
+    setup_wandb()
+    
+    global yaml_path, pretrained_weights_path
     print("Starting YOLO Optuna parameter tuning...")
-    dataset_name = "shared"
+    dataset_name = args.dataset or "shared"
  
-    pretrained_weights_path = select_pretrained_weights("shared")
+    pretrained_weights_path = select_pretrained_weights(dataset_name)  ## load weight
 
-    yaml_path, *_ = prepare_dataset("shared")
+    yaml_path, *_ = prepare_dataset(dataset_name) ## load file
 
-    run_optuna_tuning("shared")
+    run_optuna_tuning(dataset_name, args) ##save weight
 
 if __name__ == "__main__":
     main()

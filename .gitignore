@@ -4,3 +4,5 @@
 # Ignore all subfolders in models/ but not the folder itself
 */
 *.db
+*.zip
+*.png
