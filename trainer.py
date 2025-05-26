@@ -254,41 +254,6 @@ def select_pretrained_weights(dataset_name):
     else:
         print("❌ No previous models found — using base weights: yolo11s.pt")
         return "yolo11s.pt"
-
-# def log_final_plots(run_dir: str):
-#     final_plots = [
-#         "F1_curve.png",
-#         "PR_curve.png",
-#         "P_curve.png",
-#         "R_curve.png",
-#         "dfl_loss_curve.png"
-#         "confusion_matrix.png"
-#     ]
-
-#     for plot_name in final_plots:
-#         plot_path = os.path.join(run_dir, plot_name)
-#         if os.path.exists(plot_path):
-#             wandb.log({plot_name: wandb.Image(plot_path)})
-            
-#     df = pd.read_csv("results.csv")
-
-#     # Calculate F1
-#     df["metrics/F1(B)"] = 2 * df["metrics/precision(B)"] * df["metrics/recall(B)"] / (
-#         df["metrics/precision(B)"] + df["metrics/recall(B)"]
-#     )
-
-#     # Create a W&B table
-#     table = wandb.Table(columns=["epoch", "precision", "recall", "F1"])
-#     for _, row in df.iterrows():
-#         table.add_data(
-#             row["epoch"],
-#             row["metrics/precision(B)"],
-#             row["metrics/recall(B)"],
-#             row["metrics/F1(B)"]
-#         )
-
-#     # Log the full table once
-#     wandb.log({"F1_per_epoch": table})
            
 import gc
 def compute_f1_score(precision, recall):
@@ -333,9 +298,9 @@ def objective(trial, dataset_name):
             gc.collect()
             
         trial_params = {
-            "batch": trial.suggest_categorical("batchx2", [18, 232, 240]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batchx21", [232, 240]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
-            "patience": trial.suggest_int("patience", 7, 12),
+            "patience": trial.suggest_int("patience", 9, 12),
             # step 1
             "lr0": trial.suggest_float("lr0", 0.01, 0.025, log=True),
             "lrf": trial.suggest_float("lrf", 0.05, 0.18),
@@ -343,17 +308,17 @@ def objective(trial, dataset_name):
             "cls": trial.suggest_float("cls", 0.1, 0.35), #0.55
             # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
             "mosaic": trial.suggest_float("mosaic", 0.02, 0.4),
-            "warmup_epochs": trial.suggest_int("warmup_epochs", 4, 7),
+            "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 15),
             # step 2
             # "scale": trial.suggest_float("scale", 0.0, 0.7),
             # "translate": trial.suggest_float("mosaic", 0.0, 0.4),
             # hsv_h=hsv_h,
             # hsv_s=hsv_s,
             # hsv_v=hsv_v,
-            "flipud": trial.suggest_float("flipud", 0.0, 0.5),
-            "fliplr": trial.suggest_float("fliplr", 0.0, 0.5),
+            "flipud": trial.suggest_float("flipud", 0.0, 0.45),
+            "fliplr": trial.suggest_float("fliplr", 0.0, 0.45),
             #bgr=trial.suggest_float("bgr", 0.0, 1.0),
-            "mixup": trial.suggest_float("mixup", 0.2, 0.5),
+            "mixup": trial.suggest_float("mixup", 0.0, 0.45),
         }
         
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
@@ -371,7 +336,7 @@ def objective(trial, dataset_name):
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
         model.train(
             data=yaml_path,
-            epochs=60,
+            epochs=80,
             project=yolo_weights_dir,
             name=f"{version}",
             exist_ok=True,
@@ -400,6 +365,7 @@ def parse_args():
     parser.add_argument("--study", type=str, help="(Optional) study name")
     parser.add_argument("--storage", type=str, help="(Optional) storage name")
     parser.add_argument("--dataset", type=str, help="(Optional) Dataset name")
+    parser.add_argument("--epochs", type=str, help="(Optional) epochs")
     return parser.parse_args()
 
 def setup_wandb():

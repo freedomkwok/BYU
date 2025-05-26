@@ -2,7 +2,7 @@
 *.pt
 
 # Ignore all subfolders in models/ but not the folder itself
-*/
+yolo_dateset/
+yolo_weights/
 *.db
 *.zip
-*.png
