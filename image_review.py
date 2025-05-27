@@ -31,7 +31,7 @@ def draw_image_with_label(img_path):
     img_width, img_height = img.size
     img_array = np.array(img)
 
-    ax.imshow(img_array)
+    ax.imshow(img_array, cmap='gray')
     ax.set_title(basename)
     ax.axis('off')
 
@@ -54,7 +54,7 @@ def draw_image_with_label(img_path):
 
 def on_key(event):
     global current_index
-
+    print(image_paths[current_index])
     if event.key == 'right':
         current_index += 1
         if current_index < len(image_paths):
@@ -62,7 +62,14 @@ def on_key(event):
         else:
             print("Reached end of selected images.")
             plt.close()
-
+            
+    elif event.key == 'left':
+        current_index -= 1
+        if current_index < len(image_paths):
+            draw_image_with_label(image_paths[current_index])
+        else:
+            print("Reached end of selected images.")
+            plt.close()
 
 # === Start ===
 if image_paths:

@@ -135,12 +135,13 @@ def on_key(event):
             new_lbl_path = os.path.join(selected_labels_dir, os.path.splitext(new_filename)[0] + '.txt')
 
             shutil.copy(img_path, new_img_path)
-
+            print(f"🔁 Auto-copied with box: {new_filename}")
             with open(new_lbl_path, 'w') as f:
                 f.write(f"0 {norm_x:.16f} {norm_y:.16f} {norm_w:.3f} {norm_h:.3f}\n")
 
             history_stack.append((new_filename, 'selected', True))
         else:
+            print(f"✅ Copied: {basename}")
             shutil.copy(img_path, os.path.join(selected_images_dir, basename))
             label_path = os.path.join(labels_dir, os.path.splitext(basename)[0] + '.txt')
             if os.path.exists(label_path):
@@ -149,52 +150,56 @@ def on_key(event):
 
         current_index += 1 #so we moved and this is the current new image
         prefix_last = get_prefix(os.path.basename(image_paths[current_index - 1])) if current_index > 0 else None #get last prefix which is current step
-        prefix_current = get_prefix(current_base)
         
-        if prefix_last and prefix_last == prefix_current: #check if exist
-            while current_index < len(image_paths): # loop
-                current_path = image_paths[current_index]
-                current_base = os.path.basename(current_path)
-                prefix_current = get_prefix(current_base) # this need update since in loop
+        current_path = image_paths[current_index]
+        current_base = os.path.basename(current_path)
+        prefix_current = get_prefix(current_base)
+        count = 0
+        max_count = 8
+        while current_index < len(image_paths) and prefix_last == prefix_current and count <= max_count: # loop
+            if last_click:  # same image but we have clicks
+                x, y, img_width, img_height = last_click
+                norm_x = x / img_width
+                norm_y = y / img_height
+                norm_w = box_size_ratio
+                norm_h = box_size_ratio
 
-                if prefix_last and prefix_last == prefix_current: # recheck the next item
-                    if last_click:  # same image but we have clicks
-                        x, y, img_width, img_height = last_click
-                        norm_x = x / img_width
-                        norm_y = y / img_height
-                        norm_w = box_size_ratio
-                        norm_h = box_size_ratio
-
-                        prefix_match = re.match(r'^(.*)_z(\d+)', current_base)
-                        if prefix_match:
-                            prefix = prefix_match.group(1)
-                            z = int(prefix_match.group(2))
-                        else:
-                            prefix = os.path.splitext(current_base)[0]
-                            z = current_index
-
-                        box_size_tag = f"{box_size_ratio:.3f}".replace(".", "")[-3:]
-                        new_filename = f"{prefix}_z{z:04d}_x{int(x):04d}_y{int(y):04d}_w{int(img_width):04d}_h{int(img_height):04d}_r{box_size_tag}.jpg"
-
-                        new_img_path = os.path.join(selected_images_dir, new_filename)
-                        new_lbl_path = os.path.join(selected_labels_dir, os.path.splitext(new_filename)[0] + '.txt')
-
-                        shutil.copy(current_path, new_img_path)
-                        with open(new_lbl_path, 'w') as f:
-                            f.write(f"0 {norm_x:.16f} {norm_y:.16f} {norm_w:.3f} {norm_h:.3f}\n")
-
-                        history_stack.append((new_filename, 'selected', True))
-                        current_index += 1
-                    else: # else we dont have click then we should copy as before
-                        shutil.copy(img_path, os.path.join(selected_images_dir, basename))
-                        label_path = os.path.join(labels_dir, os.path.splitext(basename)[0] + '.txt')
-                        if os.path.exists(label_path):
-                            shutil.copy(label_path, os.path.join(selected_labels_dir, os.path.basename(label_path)))
-                        history_stack.append((basename, 'selected', False))
+                prefix_match = re.match(r'^(.*)_z(\d+)', current_base)
+                if prefix_match:
+                    prefix = prefix_match.group(1)
+                    z = int(prefix_match.group(2))
                 else:
-                    break
+                    prefix = os.path.splitext(current_base)[0]
+                    z = current_index
 
-            last_click = None
+                box_size_tag = f"{box_size_ratio:.3f}".replace(".", "")[-3:]
+                new_filename = f"{prefix}_z{z:04d}_x{int(x):04d}_y{int(y):04d}_w{int(img_width):04d}_h{int(img_height):04d}_r{box_size_tag}.jpg"
+
+                new_img_path = os.path.join(selected_images_dir, new_filename)
+                new_lbl_path = os.path.join(selected_labels_dir, os.path.splitext(new_filename)[0] + '.txt')
+
+                shutil.copy(current_path, new_img_path)
+                with open(new_lbl_path, 'w') as f:
+                    f.write(f"0 {norm_x:.16f} {norm_y:.16f} {norm_w:.3f} {norm_h:.3f}\n")
+                    
+                print(f"🔁 Auto-copied with box: {new_filename}")
+                
+                history_stack.append((new_filename, 'selected', True))
+            else: # else we dont have click then we should copy as before
+                print(f"✅ Copied: {basename}")
+                shutil.copy(img_path, os.path.join(selected_images_dir, basename))
+                label_path = os.path.join(labels_dir, os.path.splitext(basename)[0] + '.txt')
+                if os.path.exists(label_path):
+                    shutil.copy(label_path, os.path.join(selected_labels_dir, os.path.basename(label_path)))
+                history_stack.append((basename, 'selected', False))
+            
+            current_index += 1
+            count += 1
+            current_path = image_paths[current_index]
+            current_base = os.path.basename(current_path)
+            prefix_current = get_prefix(current_base) # this need update since in loop
+
+        last_click = None
 
     elif event.key == 'up':
         if current_index >= len(image_paths):
