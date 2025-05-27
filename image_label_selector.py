@@ -14,8 +14,9 @@ types = "[types]"
 source_folder = "[source]"
 dateset = "shared_007"
 
-images_dir_template = f'C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks/{source_folder}/{types}/{dateset}'
-labels_dir_template = f'C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks/{source_folder}/{types}/{dateset}'
+local_dev = "/Users/freedomkwokmacbookpro/Github/Kaggle/BYU/notebooks" if os.path.exists("/Applications") else "C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks/"
+images_dir_template = f'{local_dev}/{source_folder}/{types}/{dateset}'
+labels_dir_template = f'{local_dev}/{source_folder}/{types}/{dateset}'
 
 selected_images_dir = images_dir_template.replace(types, "images").replace(source_folder, "selected") + "/train"
 selected_labels_dir = images_dir_template.replace(types, "labels").replace(source_folder, "selected")+ "/train"
