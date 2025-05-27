@@ -15,7 +15,15 @@ from concurrent.futures import ThreadPoolExecutor
 np.random.seed(42)
 torch.manual_seed(42)
 
-local_dev = "C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks"
+# Define paths
+# data_path = "/kaggle/input/byu-locating-bacterial-flagellar-motors-2025/"
+# test_dir = os.path.join(data_path, "test")
+# submission_path = "/kaggle/working/submission.csv"
+
+# # Model path - adjust if your best model is saved in a different location
+# model_path = "/kaggle/input/model59/pytorch/default/1/motor_detector_shared_007_optuna_trial_59/weights/best.pt"
+
+# local_dev = "C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks"
 
 yolo_dataset_dir = os.path.join(local_dev, 'yolo_dataset')
 yolo_weights_dir = os.path.join(local_dev, 'yolo_weights')
@@ -23,20 +31,14 @@ yolo_inputs_dir = os.path.join("C:/Users/Freedomkwok2022/ML_Learn/BYU", 'input')
 
 # Define paths
 data_path = "C:/Users/Freedomkwok2022/ML_Learn/BYU/input/byu-locating-bacterial-flagellar-motors-2025/"
-test_dir = os.path.join(data_path, "test")
-submission_path =  os.path.join(local_dev, "summission")
-os.makedirs(submission_path, exist_ok=True)
-submission_file = os.path.join(local_dev, "submission.csv")
-
-# Model path - adjust if your best model is saved in a different location
-model_path =  os.path.join(yolo_weights_dir, "motor_detector_shared_optuna_trial_29/weights/best.pt") 
 
 # Detection parameters
-CONFIDENCE_THRESHOLD = 0.33  # Lower threshold to catch more potential motors
+CONFIDENCE_THRESHOLD = 0.35  # Lower threshold to catch more potential motors
 MAX_DETECTIONS_PER_TOMO = 4  # Keep track of top N detections per tomogram
 NMS_IOU_THRESHOLD = 0.45  # Non-maximum suppression threshold for 3D clustering
 CONCENTRATION = 1 # ONLY PROCESS 1/20 slices for fast submission
-BOX_SIZE_PRECENTAGE = 0.07
+BOX_PRECENTAGE = 0.07
+Z_THRESHOLD = 4
 
 # GPU profiling context manager
 class GPUProfiler:
@@ -58,7 +60,7 @@ class GPUProfiler:
 
 # Check GPU availability and set up optimizations
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-BATCH_SIZE = 1  # Default batch size, will be adjusted dynamically if GPU available
+BATCH_SIZE = 8  # Default batch size, will be adjusted dynamically if GPU available
 
 if device.startswith('cuda'):
     # Set CUDA optimization flags
@@ -80,6 +82,49 @@ else:
     print("GPU not available, using CPU")
     BATCH_SIZE = 2  # Reduce batch size for CPU
 
+def debug_image_loading(tomo_id):
+    """
+    Debug function to check image loading
+    """
+    tomo_dir = os.path.join(test_dir, tomo_id)
+    slice_files = sorted([f for f in os.listdir(tomo_dir) if f.endswith('.jpg')])
+    
+    if not slice_files:
+        print(f"No image files found in {tomo_dir}")
+        return
+        
+    print(f"Found {len(slice_files)} image files in {tomo_dir}")
+    sample_file = slice_files[len(slice_files)//2]  # Middle slice
+    img_path = os.path.join(tomo_dir, sample_file)
+    
+    # Try different loading methods
+    try:
+        # Method 1: PIL
+        img_pil = Image.open(img_path)
+        img_array_pil = np.array(img_pil)
+        print(f"PIL Image shape: {img_array_pil.shape}, dtype: {img_array_pil.dtype}")
+        
+        # Method 2: OpenCV
+        img_cv2 = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+        print(f"OpenCV Image shape: {img_cv2.shape}, dtype: {img_cv2.dtype}")
+        
+        # Method 3: Convert to RGB
+        img_rgb = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
+        print(f"OpenCV RGB Image shape: {img_rgb.shape}, dtype: {img_rgb.dtype}")
+        
+        print("Image loading successful!")
+    except Exception as e:
+        print(f"Error loading image {img_path}: {e}")
+        
+    # Also test with YOLO's built-in loader
+    try:
+        test_model = YOLO(model_path)
+        test_results = test_model([img_path], verbose=False)
+        print("YOLO model successfully processed the test image")
+        return test_results
+    except Exception as e:
+        print(f"Error with YOLO processing: {e}")
+        
 def normalize_slice(slice_data):
     """
     Normalize slice data using 2nd and 98th percentiles for better contrast
@@ -124,7 +169,7 @@ def process_tomogram(tomo_id, model, index=0, total=1):
     
     # Create CUDA streams for parallel processing if using GPU
     if device.startswith('cuda'):
-        streams = [torch.cuda.Stream() for _ in range(min(1, BATCH_SIZE))] #range(min(4, BATCH_SIZE))]
+        streams = [torch.cuda.Stream() for _ in range(min(4, BATCH_SIZE))]
     else:
         streams = [None]
     
@@ -176,7 +221,8 @@ def process_tomogram(tomo_id, model, index=0, total=1):
                 for j, result in enumerate(sub_results):
                     if len(result.boxes) > 0:
                         boxes = result.boxes
-                        height, width = result.orig_shape                     #fix
+                        
+                        height, width = boxes.orig_shape                     #fix
                         for box_idx, confidence in enumerate(boxes.conf):
                             if confidence >= CONFIDENCE_THRESHOLD:
                                 # Get bounding box coordinates
@@ -185,13 +231,14 @@ def process_tomogram(tomo_id, model, index=0, total=1):
                                 # Calculate center coordinates
                                 x_center = (x1 + x2) / 2
                                 y_center = (y1 + y2) / 2
-                                
+
                                 # Store detection with 3D coordinates
                                 all_detections.append({
                                     'z': round(sub_batch_slice_nums[j]),
                                     'y': round(y_center),
                                     'x': round(x_center),
-                                    'box_size': round(height * BOX_SIZE_PRECENTAGE), #fix
+                                    'height': round(height * BOX_SIZE_PRECENTAGE, 4), #fix
+                                    'width': round(width * BOX_SIZE_PRECENTAGE, 4), #fix
                                     'confidence': float(confidence)
                                 })
         
@@ -243,67 +290,42 @@ def perform_3d_nms(detections, iou_threshold):
     final_detections = []
     
     # Define 3D distance function
-    def distance_3d(d1, d2):
-        return np.sqrt((d1['z'] - d2['z'])**2 + 
-                       (d1['y'] - d2['y'])**2 + 
-                       (d1['x'] - d2['x'])**2)
+    def iou_2d(box1, box2):
+        """Assume boxes are dicts with x, y, width, height"""
+        x1_min = box1['x'] - box1['width'] / 2
+        x1_max = box1['x'] + box1['width'] / 2
+        y1_min = box1['y'] - box1['height'] / 2
+        y1_max = box1['y'] + box1['height'] / 2
     
-    # Maximum distance threshold (based on box size and slice gap)
- 
+        x2_min = box2['x'] - box2['width'] / 2
+        x2_max = box2['x'] + box2['width'] / 2
+        y2_min = box2['y'] - box2['height'] / 2
+        y2_max = box2['y'] + box2['height'] / 2
+    
+        inter_x = max(0, min(x1_max, x2_max) - max(x1_min, x2_min))
+        inter_y = max(0, min(y1_max, y2_max) - max(y1_min, y2_min))
+        inter_area = inter_x * inter_y
+    
+        area1 = box1['width'] * box1['height']
+        area2 = box2['width'] * box2['height']
+    
+        union = area1 + area2 - inter_area
+        
+        return inter_area / union if union > 0 else 0.0
+    
     # Process each detection
     while detections:
         # Take the detection with highest confidence
         best_detection = detections.pop(0)
-        distance_threshold = best_detection["box_size"] * iou_threshold
         
-        final_detections.append(best_detection)  #fix
+        final_detections.append(best_detection)
         
         # Filter out detections that are too close to the best detection
-        detections = [d for d in detections if distance_3d(d, best_detection) > distance_threshold]
+        # detections = [d for d in detections if distance_3d(d, best_detection) > iou_threshold]
+        # distance_threshold = round(best_detection["box_size"] * iou_threshold, 4) #fix
+        detections = [d for d in detections if abs(d['z'] - best_detection['z']) > Z_THRESHOLD or iou_2d(d, best_detection) < NMS_IOU_THRESHOLD]
     
     return final_detections
-
-def debug_image_loading(tomo_id):
-    """
-    Debug function to check image loading
-    """
-    tomo_dir = os.path.join(test_dir, tomo_id)
-    slice_files = sorted([f for f in os.listdir(tomo_dir) if f.endswith('.jpg')])
-    
-    if not slice_files:
-        print(f"No image files found in {tomo_dir}")
-        return
-        
-    print(f"Found {len(slice_files)} image files in {tomo_dir}")
-    sample_file = slice_files[len(slice_files)//2]  # Middle slice
-    img_path = os.path.join(tomo_dir, sample_file)
-    
-    # Try different loading methods
-    try:
-        # Method 1: PIL
-        img_pil = Image.open(img_path)
-        img_array_pil = np.array(img_pil)
-        print(f"PIL Image shape: {img_array_pil.shape}, dtype: {img_array_pil.dtype}")
-        
-        # Method 2: OpenCV
-        img_cv2 = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-        print(f"OpenCV Image shape: {img_cv2.shape}, dtype: {img_cv2.dtype}")
-        
-        # Method 3: Convert to RGB
-        img_rgb = cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB)
-        print(f"OpenCV RGB Image shape: {img_rgb.shape}, dtype: {img_rgb.dtype}")
-        
-        print("Image loading successful!")
-    except Exception as e:
-        print(f"Error loading image {img_path}: {e}")
-        
-    # Also test with YOLO's built-in loader
-    try:
-        test_model = YOLO(model_path)
-        test_results = test_model([img_path], verbose=False)
-        print("YOLO model successfully processed the test image")
-    except Exception as e:
-        print(f"Error with YOLO processing: {e}")
 
 def generate_submission():
     """

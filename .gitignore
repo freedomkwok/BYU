@@ -2,9 +2,13 @@
 *.pt
 
 # Ignore all subfolders in models/ but not the folder itself
-yolo_dateset/
+yolo_dataset/
+yolo_dataset2/
+yolo_dataset3/
 yolo_weights/
+selected/
+bad/
+*.json
 *.db
 *.zip
-.env
-.vscode/
+*.png
