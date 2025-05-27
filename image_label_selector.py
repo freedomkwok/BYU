@@ -100,6 +100,10 @@ def draw_image_with_boxes(img_path):
 def on_key(event):
     global current_index, last_click
 
+    def get_prefix(name):
+        match = re.match(r'^(.*)_z\d+', name)
+        return match.group(1) if match else name
+
     if event.key == 'right':
         if current_index >= len(image_paths):
             print("All images processed.")
@@ -140,8 +144,47 @@ def on_key(event):
             shutil.copy(img_path, os.path.join(selected_images_dir, basename))
             history_stack.append((basename, 'selected', False))
 
-        last_click = None
+
+        prefix_last = get_prefix(os.path.basename(image_paths[current_index - 1])) if current_index > 0 else None
+        last_click_backup = last_click
+
         current_index += 1
+        while current_index < len(image_paths):
+            current_path = image_paths[current_index]
+            current_base = os.path.basename(current_path)
+            prefix_current = get_prefix(current_base)
+
+            if last_click_backup and prefix_last and prefix_current == prefix_last:
+                x, y, img_width, img_height = last_click_backup
+                norm_x = x / img_width
+                norm_y = y / img_height
+                norm_w = box_size_ratio
+                norm_h = box_size_ratio
+
+                prefix_match = re.match(r'^(.*)_z(\d+)', current_base)
+                if prefix_match:
+                    prefix = prefix_match.group(1)
+                    z = int(prefix_match.group(2))
+                else:
+                    prefix = os.path.splitext(current_base)[0]
+                    z = current_index
+
+                box_size_tag = f"{box_size_ratio:.3f}".replace(".", "")[-3:]
+                new_filename = f"{prefix}_z{z:04d}_x{int(x):04d}_y{int(y):04d}_w{int(img_width):04d}_h{int(img_height):04d}_r{box_size_tag}.jpg"
+
+                new_img_path = os.path.join(selected_images_dir, new_filename)
+                new_lbl_path = os.path.join(selected_labels_dir, os.path.splitext(new_filename)[0] + '.txt')
+
+                shutil.copy(current_path, new_img_path)
+                with open(new_lbl_path, 'w') as f:
+                    f.write(f"0 {norm_x:.16f} {norm_y:.16f} {norm_w:.3f} {norm_h:.3f}\n")
+
+                history_stack.append((new_filename, 'selected', True))
+                current_index += 1
+            else:
+                break
+
+        last_click = None
 
     elif event.key == 'up':
         if current_index >= len(image_paths):
