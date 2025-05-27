@@ -17,10 +17,10 @@ dateset = "shared_007"
 images_dir_template = f'C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks/{source_folder}/{types}/{dateset}'
 labels_dir_template = f'C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks/{source_folder}/{types}/{dateset}'
 
-selected_images_dir = images_dir_template.replace(types, "images").replace(source_folder, "selected")
-selected_labels_dir = images_dir_template.replace(types, "labels").replace(source_folder, "selected")
-bad_images_dir = images_dir_template.replace(types, "images").replace(source_folder, "bad")
-bad_labels_dir = images_dir_template.replace(types, "labels").replace(source_folder, "bad")
+selected_images_dir = images_dir_template.replace(types, "images").replace(source_folder, "selected") + "/train"
+selected_labels_dir = images_dir_template.replace(types, "labels").replace(source_folder, "selected")+ "/train"
+bad_images_dir = images_dir_template.replace(types, "images").replace(source_folder, "bad") + "/train"
+bad_labels_dir = images_dir_template.replace(types, "labels").replace(source_folder, "bad") + "/train"
 
 os.makedirs(selected_images_dir, exist_ok=True)
 os.makedirs(selected_labels_dir, exist_ok=True)
@@ -84,11 +84,14 @@ def draw_image_with_boxes(img_path):
         with open(label_path, 'r') as f:
             for line in f:
                 class_id, x_c, y_c, w, h = map(float, line.strip().split())
-                x = (x_c - w / 2) * img_width
-                y = (y_c - h / 2) * img_height
+                x_center = x_c * img_width
+                y_center = y_c * img_height
                 width = w * img_width
                 height = h * img_height
-
+                x = x_center - width / 2
+                y = y_center - height / 2
+                print([x_center , y_center], [x_c, y_c], [img_width, img_height] )
+                print([width, height], [w,h])
                 rect = Rectangle((x, y), width, height, linewidth=2, edgecolor='r', facecolor='none')
                 ax.add_patch(rect)
                 ax.text(x, y - 5, f"Class {int(class_id)}", color='red', fontsize=8)
@@ -97,14 +100,14 @@ def draw_image_with_boxes(img_path):
 
     fig.canvas.draw()
 
+def get_prefix(name):
+    match = re.match(r'^(.*)_z\d+', name)
+    return match.group(1) if match else name
+
 def on_key(event):
     global current_index, last_click
 
-    def get_prefix(name):
-        match = re.match(r'^(.*)_z\d+', name)
-        return match.group(1) if match else name
-
-    if event.key == 'right':
+    if event.key == 'down':
         if current_index >= len(image_paths):
             print("All images processed.")
             plt.close()
@@ -112,7 +115,7 @@ def on_key(event):
 
         img_path = image_paths[current_index]
         basename = os.path.basename(img_path)
-
+        print(last_click)
         if last_click:
             x, y, img_width, img_height = last_click
             norm_x = x / img_width
@@ -129,13 +132,60 @@ def on_key(event):
                 z = current_index
 
             box_size_tag = f"{box_size_ratio:.3f}".replace(".", "")[-3:]
-            new_filename = f"{prefix}_z{z:04d}_x{int(x):04d}_y{int(y):04d}_w{int(img_width):04d}_h{int(img_height):04d}_r{box_size_tag}.jpg"
+            new_filename = f"{prefix}_z{z:04d}_y{int(y):04d}_x{int(x):04d}_w{int(img_width):04d}_h{int(img_height):04d}_r{box_size_tag}.jpg"
 
             new_img_path = os.path.join(selected_images_dir, new_filename)
             new_lbl_path = os.path.join(selected_labels_dir, os.path.splitext(new_filename)[0] + '.txt')
 
             shutil.copy(img_path, new_img_path)
-            print(f"🔁 Auto-copied with box: {new_filename}")
+            print(f"🔁 {x, y} {norm_x, norm_y} Manual-copied with box: {new_filename}")
+            with open(new_lbl_path, 'w') as f:
+                f.write(f"0 {norm_x:.16f} {norm_y:.16f} {norm_w:.3f} {norm_h:.3f}\n")
+
+            history_stack.append((new_filename, 'selected', True))
+        else:
+            print(f"✅ Copied: {basename}")
+            shutil.copy(img_path, os.path.join(selected_images_dir, basename))
+            label_path = os.path.join(labels_dir, os.path.splitext(basename)[0] + '.txt')
+            if os.path.exists(label_path):
+                shutil.copy(label_path, os.path.join(selected_labels_dir, os.path.basename(label_path)))
+            history_stack.append((basename, 'selected', False))
+
+        current_index += 1 #so we moved and this is the current new image
+        last_click = None
+        
+    elif event.key == 'right':
+        if current_index >= len(image_paths):
+            print("All images processed.")
+            plt.close()
+            return
+
+        img_path = image_paths[current_index]
+        basename = os.path.basename(img_path)
+        print(last_click)
+        if last_click:
+            x, y, img_width, img_height = last_click
+            norm_x = x / img_width
+            norm_y = y / img_height
+            norm_w = box_size_ratio
+            norm_h = box_size_ratio
+
+            prefix_match = re.match(r'^(.*)_z(\d+)', basename)
+            if prefix_match:
+                prefix = prefix_match.group(1)
+                z = int(prefix_match.group(2))
+            else:
+                prefix = os.path.splitext(basename)[0]
+                z = current_index
+
+            box_size_tag = f"{box_size_ratio:.3f}".replace(".", "")[-3:]
+            new_filename = f"{prefix}_z{z:04d}_y{int(y):04d}_x{int(x):04d}_w{int(img_width):04d}_h{int(img_height):04d}_r{box_size_tag}.jpg"
+
+            new_img_path = os.path.join(selected_images_dir, new_filename)
+            new_lbl_path = os.path.join(selected_labels_dir, os.path.splitext(new_filename)[0] + '.txt')
+
+            shutil.copy(img_path, new_img_path)
+            print(f"🔁{x, y} {norm_x, norm_y} Manual-copied with box: {new_filename} {x, y}")
             with open(new_lbl_path, 'w') as f:
                 f.write(f"0 {norm_x:.16f} {norm_y:.16f} {norm_w:.3f} {norm_h:.3f}\n")
 
@@ -173,7 +223,7 @@ def on_key(event):
                     z = current_index
 
                 box_size_tag = f"{box_size_ratio:.3f}".replace(".", "")[-3:]
-                new_filename = f"{prefix}_z{z:04d}_x{int(x):04d}_y{int(y):04d}_w{int(img_width):04d}_h{int(img_height):04d}_r{box_size_tag}.jpg"
+                new_filename = f"{prefix}_z{z:04d}_y{int(y):04d}_x{int(x):04d}_w{int(img_width):04d}_h{int(img_height):04d}_r{box_size_tag}.jpg"
 
                 new_img_path = os.path.join(selected_images_dir, new_filename)
                 new_lbl_path = os.path.join(selected_labels_dir, os.path.splitext(new_filename)[0] + '.txt')
@@ -182,7 +232,7 @@ def on_key(event):
                 with open(new_lbl_path, 'w') as f:
                     f.write(f"0 {norm_x:.16f} {norm_y:.16f} {norm_w:.3f} {norm_h:.3f}\n")
                     
-                print(f"🔁 Auto-copied with box: {new_filename}")
+                print(f"🔁{x, y} {norm_x, norm_y} Auto-copied with box: {new_filename}")
                 
                 history_stack.append((new_filename, 'selected', True))
             else: # else we dont have click then we should copy as before
@@ -206,15 +256,27 @@ def on_key(event):
             print("All images processed.")
             plt.close()
             return
+        
+        prefix_last = get_prefix(os.path.basename(image_paths[current_index]))
+        count = 0
+        max_count = 0
 
-        img_path = image_paths[current_index]
-        basename = os.path.basename(img_path)
+        while current_index < len(image_paths) and count <= max_count:
+            current_path = image_paths[current_index]
+            current_base = os.path.basename(current_path)
+            prefix_current = get_prefix(current_base)
 
-        print(f"⬆ Moving {basename} only to {bad_images_dir}")
-        shutil.move(img_path, os.path.join(bad_images_dir, basename))
-        history_stack.append((basename, 'bad', False))
+            if prefix_current != prefix_last:
+                break
+
+            print(f"⬆ Moving {current_base} to {bad_images_dir}")
+            shutil.copy(current_path, os.path.join(bad_images_dir, current_base))
+            history_stack.append((current_base, 'bad', False))
+
+            current_index += 1
+            count += 1
+
         last_click = None
-        current_index += 1
 
     elif event.key == 'left':
         if not history_stack:
