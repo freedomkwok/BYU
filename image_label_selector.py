@@ -34,6 +34,7 @@ labels_dir = os.path.join(labels_dir_template.replace(types, "labels").replace(s
 
 print("images_dir: ", images_dir)
 image_paths = sorted(glob.glob(os.path.join(images_dir, '**', '*.jpg'), recursive=True))
+total = len(image_paths)
 current_index = 0
 checkpoint_file = '_image_viewer_checkpoint.json'
 
@@ -51,7 +52,7 @@ if os.path.exists(checkpoint_file):
 fig, ax = plt.subplots()
 history_stack = deque(maxlen=50)
 last_click = None
-box_size_ratio = 0.07  # 7% of width/height
+box_size_ratio = 0.1  # 7% of width/height
 
 def save_checkpoint():
     if 0 <= current_index < len(image_paths):
@@ -107,7 +108,9 @@ def get_prefix(name):
 
 def on_key(event):
     global current_index, last_click
-
+    
+    print(f"{current_index}/{total}/n")
+    
     if event.key == 'down':
         if current_index >= len(image_paths):
             print("All images processed.")
