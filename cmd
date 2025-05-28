@@ -5,6 +5,12 @@ apt install unzip
 pip install gdown
 pip install tmux
 
+find ./yolo_dataset/ -name "*.jpg" -delete
+
+unzip -j yolo_dataset_009.zip 'yolo_dataset_009/*' -d yolo_dataset
+unzip yolo_dataset_009.zip 'yolo_dataset_009/*' -d yolo_dataset
+
+unzip yolo_dataset_009.zip 'yolo_dataset_009/*' -d yolo_dataset
 
 gdown --folder https://drive.google.com/drive/folders/1zEjBVsjzyGKIhyw4HVnUSUFByf_FNeW6 --fuzzy --quiet
 
@@ -12,6 +18,11 @@ gdown 'https://drive.google.com/file/d/1nPxH3jm9LXEI5HPx-5d9K8OwsFW5qXQQ/view?us
 gdown 'https://drive.google.com/file/d/1f8JZn4LM9kvb_WEFB53l5_VD0rqwrjg5/view?usp=sharing' --fuzzy #ipynb.py
 gdown 'https://drive.google.com/file/d/1v7cqVi4D2Q8qFRHWdoKvLAvaQlFIAv0D/view?usp=sharing' --fuzzy  #trainer.py
 gdown 'https://drive.google.com/file/d/1RQ0W6gipuz_P3UkIIkePNQp13HdFhJC3/view?usp=sharing' --fuzzy  #move.py
+
+
+ps -eo pid,ppid,state,comm | awk '$3 == "Z" && $4 == "pt_main_thread" { print $2 }' | sort -u | xargs -r kill -9
+
+ps -eo pid,ppid,state,cmd | awk '/python trainer.py --dataset shared_009_full/ { print $1 }' | xargs -r kill -9
 
 
 mkdir notebooks
