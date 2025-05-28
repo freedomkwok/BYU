@@ -309,7 +309,8 @@ def objective(trial, dataset_name):
                 "metrics/f1": f1,
                 "device": gpu_names[0],
                 "seconds_per_sample": samples / epoch_time if epoch > 1 else 0,
-                "samples_trained": samples
+                "samples_trained": samples,
+                "time_per_epoch": epoch_time,
             })
 
             gc.collect()
