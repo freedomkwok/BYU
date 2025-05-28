@@ -36,6 +36,10 @@ file_pairs = [
         os.path.join(local_dev, './utils/get_results.py'),
         os.path.join(google_folder, 'get_results.py')
     ),
+    (
+        os.path.join(local_dev, './init.sh'),
+        os.path.join(google_folder, 'init.sh')
+    ),
 ]
 
 def sync_files(reverse=False):
