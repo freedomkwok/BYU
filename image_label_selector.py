@@ -51,7 +51,7 @@ if os.path.exists(checkpoint_file):
             print("⚠️ Checkpoint image not found. Starting from beginning.")
 
 fig, ax = plt.subplots()
-history_stack = deque(maxlen=50)
+history_stack = deque(maxlen=450)
 last_click = None
 defaut_box_size_ratio = 0.09  # 7% of width/height
 box_size_ratio = defaut_box_size_ratio
@@ -101,11 +101,11 @@ def draw_image_with_boxes(img_path):
 
                 print("\n[image info]")
                 print("center:" , [x_center , y_center], [x_c, y_c], [img_width, img_height])
-                print("box:", [width, height], [w,h])
+                print("box:", [width, height], [box_size_ratio,box_size_ratio ],[w,h])
                 
                 rect = Rectangle((x, y), width, height, linewidth=2, edgecolor=('r' if not ratio_changed else 'lime'), facecolor='none')
                 ax.add_patch(rect)
-                ax.text(x, y - 5, f"Class {int(class_id)}", color='red', fontsize=8)
+                ax.text(x, y - 5, f"{box_size_ratio}", color=('red' if not ratio_changed else 'lime'), fontsize=8)
     else:
         ax.text(10, 10, "No annotations found", color='red', fontsize=12)
 
@@ -239,7 +239,7 @@ def on_key(event):
         current_base = os.path.basename(current_path)
         prefix_current = get_prefix(current_base)
         count = 0
-        max_count = 8
+        max_count = 5
         while current_index < len(image_paths) and prefix_last == prefix_current and count <= max_count: # loop
             if last_click:  # same image but we have clicks
                 x, y, img_width, img_height = last_click

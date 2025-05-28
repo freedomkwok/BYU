@@ -25,8 +25,16 @@ file_pairs = [
         os.path.join(google_folder, 'cmd')
     ),
     (
-        os.path.join(local_dev, 'move_script.py'),
+        os.path.join(local_dev, './utils/move_script.py'),
         os.path.join(google_folder, 'move_script.py')
+    ),
+    (
+        os.path.join(local_dev, './utils/move_script2.py'),
+        os.path.join(google_folder, 'move_script2.py')
+    ),
+    (
+        os.path.join(local_dev, './utils/get_results.py'),
+        os.path.join(google_folder, 'get_results.py')
     ),
 ]
 
