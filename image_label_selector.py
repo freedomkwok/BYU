@@ -37,6 +37,7 @@ image_paths = sorted(glob.glob(os.path.join(images_dir, '**', '*.jpg'), recursiv
 total = len(image_paths)
 current_index = 0
 checkpoint_file = '_image_viewer_checkpoint.json'
+last_box_info =None
 
 # === Load checkpoint if exists ===
 if os.path.exists(checkpoint_file):
@@ -52,7 +53,8 @@ if os.path.exists(checkpoint_file):
 fig, ax = plt.subplots()
 history_stack = deque(maxlen=50)
 last_click = None
-box_size_ratio = 0.1  # 7% of width/height
+defaut_box_size_ratio = 0.09  # 7% of width/height
+box_size_ratio = defaut_box_size_ratio
 
 def save_checkpoint():
     if 0 <= current_index < len(image_paths):
@@ -61,8 +63,9 @@ def save_checkpoint():
                 "index": current_index,
                 "image_path": image_paths[current_index]
             }, f)
-
+    
 def draw_image_with_boxes(img_path):
+    global last_box_info
     ax.clear()
     basename = os.path.basename(img_path)
     parent = os.path.basename(os.path.dirname(img_path))
@@ -86,15 +89,21 @@ def draw_image_with_boxes(img_path):
         with open(label_path, 'r') as f:
             for line in f:
                 class_id, x_c, y_c, w, h = map(float, line.strip().split())
-                x_center = x_c * img_width
-                y_center = y_c * img_height
-                width = w * img_width
-                height = h * img_height
+                x_center = x_c * img_width if last_click is None else last_click[0]
+                y_center = y_c * img_height if last_click is None else last_click[1]
+                
+                ratio_changed = (box_size_ratio != defaut_box_size_ratio)
+                
+                width = w * img_width if not ratio_changed else box_size_ratio* img_width
+                height = h * img_height if not ratio_changed else box_size_ratio* img_height
                 x = x_center - width / 2
                 y = y_center - height / 2
-                print([x_center , y_center], [x_c, y_c], [img_width, img_height] )
-                print([width, height], [w,h])
-                rect = Rectangle((x, y), width, height, linewidth=2, edgecolor='r', facecolor='none')
+
+                print("\n[image info]")
+                print("center:" , [x_center , y_center], [x_c, y_c], [img_width, img_height])
+                print("box:", [width, height], [w,h])
+                
+                rect = Rectangle((x, y), width, height, linewidth=2, edgecolor=('r' if not ratio_changed else 'lime'), facecolor='none')
                 ax.add_patch(rect)
                 ax.text(x, y - 5, f"Class {int(class_id)}", color='red', fontsize=8)
     else:
@@ -102,16 +111,33 @@ def draw_image_with_boxes(img_path):
 
     fig.canvas.draw()
 
+def reset():
+    global last_click, box_size_ratio
+    last_click = None
+    box_size_ratio = defaut_box_size_ratio
+    
 def get_prefix(name):
     match = re.match(r'^(.*)_z\d+', name)
     return match.group(1) if match else name
-
+    
 def on_key(event):
-    global current_index, last_click
+    global current_index, last_click, box_size_ratio
     
     print(f"{current_index}/{total}/n")
     
-    if event.key == 'down':
+    if event.key == 'pageup':
+        box_size_ratio = min(1.0, box_size_ratio + 0.01)
+        print(f"🔍 Enlarged box size: {box_size_ratio:.3f}")
+
+    elif event.key == 'pagedown':
+        box_size_ratio = max(0.01, box_size_ratio - 0.01)
+        print(f"🔎 Shrunk box size: {box_size_ratio:.3f}")
+
+    elif event.key == 'home':
+        box_size_ratio = defaut_box_size_ratio
+        print("↩️ Box size reset to default {defaut_box_size_ratio}")
+        
+    elif event.key == 'down':
         if current_index >= len(image_paths):
             print("All images processed.")
             plt.close()
@@ -119,7 +145,7 @@ def on_key(event):
 
         img_path = image_paths[current_index]
         basename = os.path.basename(img_path)
-        print(last_click)
+        print("last_click:", last_click)
         if last_click:
             x, y, img_width, img_height = last_click
             norm_x = x / img_width
@@ -142,21 +168,25 @@ def on_key(event):
             new_lbl_path = os.path.join(selected_labels_dir, os.path.splitext(new_filename)[0] + '.txt')
 
             shutil.copy(img_path, new_img_path)
-            print(f"🔁 {x, y} {norm_x, norm_y} Manual-copied with box: {new_filename}")
             with open(new_lbl_path, 'w') as f:
                 f.write(f"0 {norm_x:.16f} {norm_y:.16f} {norm_w:.3f} {norm_h:.3f}\n")
-
+            print(f"🔁 Manual-copied with box: {new_img_path}")
+            print(f"🔁 {x, y} {norm_x, norm_y} Manual-copied with box: {new_lbl_path}")
             history_stack.append((new_filename, 'selected', True))
+            
         else:
-            print(f"✅ Copied: {basename}")
-            shutil.copy(img_path, os.path.join(selected_images_dir, basename))
+            image_target = os.path.join(selected_images_dir, basename)
+            print(f"✅ Copied: {image_target}")
+            shutil.copy(img_path, image_target)
             label_path = os.path.join(labels_dir, os.path.splitext(basename)[0] + '.txt')
             if os.path.exists(label_path):
-                shutil.copy(label_path, os.path.join(selected_labels_dir, os.path.basename(label_path)))
+                label_target = os.path.join(selected_labels_dir, os.path.basename(label_path))
+                shutil.copy(label_path, label_target)
+                print(f"✅ Copied: {label_target}")
             history_stack.append((basename, 'selected', False))
 
         current_index += 1 #so we moved and this is the current new image
-        last_click = None
+        reset()
         
     elif event.key == 'right':
         if current_index >= len(image_paths):
@@ -236,9 +266,9 @@ def on_key(event):
                 with open(new_lbl_path, 'w') as f:
                     f.write(f"0 {norm_x:.16f} {norm_y:.16f} {norm_w:.3f} {norm_h:.3f}\n")
                     
-                print(f"🔁{x, y} {norm_x, norm_y} Auto-copied with box: {new_filename}")
-                
+                print(f"🔁{x, y} {norm_x, norm_y} {norm_w, norm_h} Auto-copied with box: {new_filename}")
                 history_stack.append((new_filename, 'selected', True))
+                
             else: # else we dont have click then we should copy as before
                 print(f"✅ Copied: {basename}")
                 shutil.copy(img_path, os.path.join(selected_images_dir, basename))
@@ -253,7 +283,8 @@ def on_key(event):
             current_base = os.path.basename(current_path)
             prefix_current = get_prefix(current_base) # this need update since in loop
 
-        last_click = None
+        reset()
+        
 
     elif event.key == 'up':
         if current_index >= len(image_paths):
@@ -280,7 +311,7 @@ def on_key(event):
             current_index += 1
             count += 1
 
-        last_click = None
+        reset()
 
     elif event.key == 'left':
         if not history_stack:
@@ -309,7 +340,7 @@ def on_key(event):
             except Exception as e:
                 print("Error undoing bad:", e)
 
-        last_click = None
+        reset()
 
     save_checkpoint()
     if 0 <= current_index < len(image_paths):
