@@ -73,6 +73,9 @@ np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 
 import wandb
+import gc
+last_time = time.time()
+gpu_names = [torch.cuda.get_device_name(i).replace("NVIDIA GeForce ", "") for i in range(torch.cuda.device_count())]
 
 def plot_dfl_loss_curve(run_dir):
     results_csv = os.path.join(run_dir, 'results.csv')
@@ -255,7 +258,6 @@ def select_pretrained_weights(dataset_name):
         print("❌ No previous models found — using base weights: yolo11s.pt")
         return "yolo11s.pt"
            
-import gc
 def compute_f1_score(precision, recall):
     if (precision + recall) == 0:
         return 0.0
@@ -273,13 +275,25 @@ def objective(trial, dataset_name):
 
         # Define custom callback
         def custom_epoch_end_callback(trainer):
+            now = time.time()
+
+            if not hasattr(trainer, 'last_time'):
+                trainer.last_time = now
+
+            epoch_time = now - trainer.last_time
+            trainer.last_time = now
+            steps = len(trainer.train_loader)
+            batch_size = trainer.args.batch
+            samples = steps * batch_size
+            
             epoch = trainer.epoch
             metrics = trainer.metrics  # after validation step
             loss = trainer.loss_items  # training loss components: box, cls, dfl
             precision = metrics.get("metrics/precision(B)", 0.01)
             recall = metrics.get("metrics/recall(B)", 0.99)
             f1 = compute_f1_score(precision, recall)
-
+      
+            
             wandb.log({
                 "epoch": epoch,
                 "train/box_loss": loss[0],
@@ -293,6 +307,9 @@ def objective(trial, dataset_name):
                 "metrics/precision": metrics.get("metrics/precision(B)", 0),
                 "metrics/recall": metrics.get("metrics/recall(B)", 0),
                 "metrics/f1": f1,
+                "device": gpu_names[0],
+                "seconds_per_sample": samples / epoch_time if epoch > 1 else 0,
+                "samples_trained": samples
             })
 
             gc.collect()
@@ -313,14 +330,14 @@ def objective(trial, dataset_name):
             "scale": trial.suggest_float("scale", 0.08, 0.5),
             "translate": trial.suggest_float("mosaic", 0.08, 0.5),
             # hsv_h=hsv_h,
-            "hsv_s": trial.suggest_float("hsv_s", 0.0, 0.45),
+            # hsv_s=hsv_s,
             # hsv_v=hsv_v,
             "flipud": trial.suggest_float("flipud", 0.0, 0.45),
             "fliplr": trial.suggest_float("fliplr", 0.0, 0.45),
             #bgr=trial.suggest_float("bgr", 0.0, 1.0),
             "mixup": trial.suggest_float("mixup", 0.3, 0.7),
-            "degrees": trial.suggest_float("degrees", 0.0, 30.0),
-            "blur": trial.suggest_float("blur", 0.0, 0.08)
+            # "degrees": trial.suggest_float("degrees", 0.0, 30.0),
+            # "blur": trial.suggest_float("blur", 0.0, 0.08)
         }
         
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
@@ -329,7 +346,7 @@ def objective(trial, dataset_name):
         wandb.init(
             project="BYU",
             name=f"{trial.number}",
-            tags=[dataset_name],
+            tags=[dataset_name] + gpu_names,
             config=trial_params,
             reinit=True
         )
@@ -338,11 +355,11 @@ def objective(trial, dataset_name):
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
         model.train(
             data=yaml_path,
-            epochs=100,
+            epochs=140,
             project=yolo_weights_dir,
             name=f"{version}",
-            single_cls=True,
             exist_ok=True,
+    	    single_cls=True,
             verbose=False,
             amp=True,
             device=0,
