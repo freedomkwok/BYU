@@ -219,8 +219,9 @@ def clean_cuda_info():
 
 def run_optuna_tuning(dataset_name, args):
     storage_name = f'sqlite:///{args.storage or "yolo_hpo"}.db'
-    study_name =  args.storage or "yolo_hpo"
-    
+    study_name =  args.study or "yolo_hpo"
+    resume = bool(args.resume) if args.resume is not None else False
+
     print(f"🎯Loading Study: {study_name} storage:{storage_name} \n")
     study = optuna.create_study(
         study_name=study_name,
@@ -228,7 +229,7 @@ def run_optuna_tuning(dataset_name, args):
         direction="minimize",
         load_if_exists=True,
     )
-    study.optimize(partial(objective, dataset_name=dataset_name), n_trials=90)
+    study.optimize(partial(objective, dataset_name=dataset_name, resume=resume), n_trials=90)
 
     best_trial = study.best_trial
     best_version = f"motor_detector_{dataset_name}_optuna_trial_{best_trial.number}"
@@ -263,7 +264,7 @@ def compute_f1_score(precision, recall):
         return 0.0
     return 2 * precision * recall / (precision + recall)
 
-def objective(trial, dataset_name):
+def objective(trial, dataset_name, resume=False):
     try:
         clean_cuda_info()
             
@@ -451,6 +452,7 @@ def objective(trial, dataset_name):
             # multi_scale=True, #memory costly
             cos_lr=True, #memory costly
             device=0,
+            resume=resume,
             #trainer=MyTrainer,  # 👈 this is the key
             **trial_params
         )
@@ -475,6 +477,7 @@ def parse_args():
     parser.add_argument("--storage", type=str, help="(Optional) storage name")
     parser.add_argument("--dataset", type=str, help="(Optional) Dataset name")
     parser.add_argument("--epochs", type=str, help="(Optional) epochs")
+    parser.add_argument("--resume", type=str, help="(Optional) epochs")
     return parser.parse_args()
 
 def setup_wandb():
@@ -489,7 +492,6 @@ def main():
     global yaml_path, pretrained_weights_path
     print("Starting YOLO Optuna parameter tuning...")
     dataset_name = args.dataset or "shared_007"
- 
     pretrained_weights_path = select_pretrained_weights(dataset_name)  ## load weight
 
     yaml_path, *_ = prepare_dataset(dataset_name) ## load file
