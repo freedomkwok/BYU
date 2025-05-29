@@ -292,8 +292,10 @@ def objective(trial, dataset_name):
             precision = metrics.get("metrics/precision(B)", 0.01)
             recall = metrics.get("metrics/recall(B)", 0.99)
             f1 = compute_f1_score(precision, recall)
-      
-            
+
+            mAP95 = metrics.get("metrics/mAP50-95(B)", 0)
+            # trial.report(mAP95, step=epoch)
+
             wandb.log({
                 "epoch": epoch,
                 "train/box_loss": loss[0],
@@ -303,7 +305,7 @@ def objective(trial, dataset_name):
                 "val/cls_loss": metrics.get("val/cls_loss", 0),
                 "val/dfl_loss": metrics.get("val/dfl_loss", 0),
                 "metrics/mAP50": metrics.get("metrics/mAP50(B)", 0),
-                "metrics/mAP50-95": metrics.get("metrics/mAP50-95(B)", 0),
+                "metrics/mAP50-95": mAP95,
                 "metrics/precision": metrics.get("metrics/precision(B)", 0),
                 "metrics/recall": metrics.get("metrics/recall(B)", 0),
                 "metrics/f1": f1,
@@ -311,36 +313,96 @@ def objective(trial, dataset_name):
                 "samples_per_second": samples / epoch_time if epoch > 1 else 0,
                 "samples_trained": samples,
                 "time_per_epoch": epoch_time,
+                "dataset_name": dataset_name
             })
 
             gc.collect()
             
-        trial_params = {
-            "batch": trial.suggest_categorical("batchx22", [240, 248]), #600ada: 200 88
+        # trial_params = {
+        #     "batch": trial.suggest_categorical("batchx22", [240, 248]), #600ada: 200 88
+        #     "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
+        #     "patience": trial.suggest_int("patience", 9, 16),
+        #     # step 1
+        #     "lr0": trial.suggest_float("lr0", 0.005, 0.025, log=True),
+        #     "lrf": trial.suggest_float("lrf", 0.03, 0.12),
+        #     "box": trial.suggest_float("box", 7.5, 9.7),   #7.7
+        #     "cls": trial.suggest_float("cls", 0.05, 0.22), #0.55
+        #     # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
+        #     "mosaic": trial.suggest_float("mosaic", 0.08, 0.4),
+        #     "warmup_epochs": trial.suggest_int("warmup_epochs", 7, 16),
+        #     # step 2
+        #     "scale": trial.suggest_float("scale", 0.08, 0.5),
+        #     "translate": trial.suggest_float("mosaic", 0.08, 0.5),
+        #     # hsv_h=hsv_h,
+        #     # hsv_s=hsv_s,
+        #     # hsv_v=hsv_v,
+        #     "flipud": trial.suggest_float("flipud", 0.0, 0.45),
+        #     "fliplr": trial.suggest_float("fliplr", 0.0, 0.45),
+        #     #bgr=trial.suggest_float("bgr", 0.0, 1.0),
+        #     "mixup": trial.suggest_float("mixup", 0.3, 0.7),
+        #     "epochs": trial.suggest_int("mixup", 120, 140),
+        #     # "degrees": trial.suggest_float("degrees", 0.0, 30.0),
+        #     # "blur": trial.suggest_float("blur", 0.0, 0.08)
+        # }
+
+        # _009_full_6000ada_trial_params = {
+        #     "batch": trial.suggest_categorical("batch_0091", [248]), #600ada: 200 88
+        #     "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
+        #     "patience": trial.suggest_int("patience", 10, 12),
+        #     # step 1
+        #     "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
+        #     "lrf": trial.suggest_float("lrf", 0.055, 0.056),
+        #     "box": trial.suggest_float("box", 9.45, 9.5),   #7.7
+        #     "cls": trial.suggest_float("cls", 0.1, 0.1495), #0.55
+        #     # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
+        #     "mosaic": trial.suggest_float("mosaic", 0.11575, 0.145),
+        #     "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 12),
+        #     # step 2
+        #     "scale": trial.suggest_float("scale", 0.475, 0.5),
+        #     "translate": trial.suggest_float("mosaic", 0.115, 0.125),
+        #     # hsv_h=hsv_h,
+        #     # hsv_s=hsv_s,
+        #     # hsv_v=hsv_v,
+        #     "flipud": trial.suggest_float("flipud", 0.1, 0.45),
+        #     "fliplr": trial.suggest_float("fliplr", 0.08, 0.45),
+        #     #bgr=trial.suggest_float("bgr", 0.0, 1.0),
+        #     "mixup": trial.suggest_float("mixup", 0.3, 0.7),
+        #     "epochs": trial.suggest_int("epochs", 120, 140),
+        #     # "degrees": trial.suggest_float("degrees", 0.0, 30.0),
+        #     # "blur": trial.suggest_float("blur", 0.0, 0.08)
+        # }
+
+        _009_6000ada_trial_params = {
+            "batch": trial.suggest_categorical("batch_0256", [128]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
-            "patience": trial.suggest_int("patience", 9, 16),
+            "patience": trial.suggest_int("patience", 10, 12),
             # step 1
-            "lr0": trial.suggest_float("lr0", 0.005, 0.025, log=True),
-            "lrf": trial.suggest_float("lrf", 0.03, 0.12),
-            "box": trial.suggest_float("box", 7.5, 9.7),   #7.7
-            "cls": trial.suggest_float("cls", 0.05, 0.22), #0.55
+            "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
+            "lrf": trial.suggest_float("lrf", 0.055, 0.06),
+            "box": trial.suggest_float("box", 9.45, 9.8),   #7.7
+            "cls": trial.suggest_float("cls", 0.05, 0.1495), #0.55
             # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
-            "mosaic": trial.suggest_float("mosaic", 0.08, 0.4),
-            "warmup_epochs": trial.suggest_int("warmup_epochs", 7, 16),
+            # "momentum": trial.suggest_float("momentum", 0.4, 0.98),   # For SGD or Adam
+            # "weight_decay": trial.suggest_float("weight_decay", 1e-5, 0.01),  # Regularization
+            "mosaic": trial.suggest_float("mosaic", 0.11575, 0.15),
+            "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 12),
             # step 2
-            "scale": trial.suggest_float("scale", 0.08, 0.5),
-            "translate": trial.suggest_float("mosaic", 0.08, 0.5),
-            # hsv_h=hsv_h,
-            # hsv_s=hsv_s,
-            # hsv_v=hsv_v,
-            "flipud": trial.suggest_float("flipud", 0.0, 0.45),
-            "fliplr": trial.suggest_float("fliplr", 0.0, 0.45),
-            #bgr=trial.suggest_float("bgr", 0.0, 1.0),
+            "scale": trial.suggest_float("scale", 0.2, 0.5),
+            "translate": trial.suggest_float("mosaic", 0.115, 0.125),
+            "hsv_h": trial.suggest_float("hsv_h", 0.0, 0.015),
+            "hsv_s": trial.suggest_float("hsv_s", 0.2, 0.9),
+            # "flipud": trial.suggest_float("flipud", 0.1, 0.45),
+            "fliplr": trial.suggest_float("fliplr", 0.08, 0.45),
+            "bgr": trial.suggest_float("bgr", 0.0, 1.0),
             "mixup": trial.suggest_float("mixup", 0.3, 0.7),
+            "cutmix": trial.suggest_float("cutmix", 0.2, 0.7),
+            "epochs": trial.suggest_int("epochs", 110, 140),
             # "degrees": trial.suggest_float("degrees", 0.0, 30.0),
             # "blur": trial.suggest_float("blur", 0.0, 0.08)
         }
-        
+
+        trial_params = _009_6000ada_trial_params
+
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
         os.environ["WANDB_DISABLE_CODE"] = "true"  
         os.environ["WANDB_CONSOLE"] = "off"  
@@ -352,17 +414,21 @@ def objective(trial, dataset_name):
             reinit=True
         )
 
+        print("Before model init:", torch.cuda.memory_allocated() / 1e6, "MB")
         model = YOLO(pretrained_weights_path)
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
+        print("After model init:", torch.cuda.memory_allocated() / 1e6, "MB")
+        
         model.train(
             data=yaml_path,
-            epochs=140,
             project=yolo_weights_dir,
             name=f"{version}",
             exist_ok=True,
     	    single_cls=True,
             verbose=False,
             amp=True,
+            # multi_scale=True, #memory costly
+            # cos_lr=True, #memory costly
             device=0,
             #trainer=MyTrainer,  # 👈 this is the key
             **trial_params
