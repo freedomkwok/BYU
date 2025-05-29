@@ -266,57 +266,6 @@ def compute_f1_score(precision, recall):
 def objective(trial, dataset_name):
     try:
         clean_cuda_info()
-
-        version = f"motor_detector_{dataset_name}_optuna_trial_{trial.number}"
-        version_dir = os.path.join(yolo_weights_dir, f"{version}")
-
-        # run_dir = os.path.join(yolo_weights_dir, f"{version}", "runs")
-        os.makedirs(version_dir, exist_ok=True)
-
-        # Define custom callback
-        def custom_epoch_end_callback(trainer):
-            now = time.time()
-
-            if not hasattr(trainer, 'last_time'):
-                trainer.last_time = now
-
-            epoch_time = now - trainer.last_time
-            trainer.last_time = now
-            steps = len(trainer.train_loader)
-            batch_size = trainer.args.batch
-            samples = steps * batch_size
-            
-            epoch = trainer.epoch
-            metrics = trainer.metrics  # after validation step
-            loss = trainer.loss_items  # training loss components: box, cls, dfl
-            precision = metrics.get("metrics/precision(B)", 0.01)
-            recall = metrics.get("metrics/recall(B)", 0.99)
-            f1 = compute_f1_score(precision, recall)
-
-            mAP95 = metrics.get("metrics/mAP50-95(B)", 0)
-            # trial.report(mAP95, step=epoch)
-
-            wandb.log({
-                "epoch": epoch,
-                "train/box_loss": loss[0],
-                "train/cls_loss": loss[1],
-                "train/dfl_loss": loss[2],
-                "val/box_loss": metrics.get("val/box_loss", 0),
-                "val/cls_loss": metrics.get("val/cls_loss", 0),
-                "val/dfl_loss": metrics.get("val/dfl_loss", 0),
-                "metrics/mAP50": metrics.get("metrics/mAP50(B)", 0),
-                "metrics/mAP50-95": mAP95,
-                "metrics/precision": metrics.get("metrics/precision(B)", 0),
-                "metrics/recall": metrics.get("metrics/recall(B)", 0),
-                "metrics/f1": f1,
-                "device": gpu_name,
-                "samples_per_second": samples / epoch_time if epoch > 1 else 0,
-                "samples_trained": samples,
-                "time_per_epoch": epoch_time,
-                "dataset_name": dataset_name
-            })
-
-            gc.collect()
             
         # trial_params = {
         #     "batch": trial.suggest_categorical("batchx22", [240, 248]), #600ada: 200 88
@@ -425,15 +374,70 @@ def objective(trial, dataset_name):
         os.environ["WANDB_DISABLE_CODE"] = "true"  
         os.environ["WANDB_CONSOLE"] = "off"  
 
-
+        batch_num = trial_params["batch"]
+        image_size = trial_params["imgsz"]
+        optimizer = trial_params["optimizer"]
+        epochs = trial_params["epochs"]
         model = YOLO(pretrained_weights_path)
+        model_base = model.model.yaml.get('model')
+
+        version = f"{trial.number}_{model_base}_{dataset_name}_{batch_num}_{epochs}"
+        version_dir = os.path.join(yolo_weights_dir, f"{version}")
+        os.makedirs(version_dir, exist_ok=True)
+
+        addtional_configs = {"_model_base": model_base, "_device": gpu_name, "_dataset_name": dataset_name}
+        
         wandb.init(
             project="BYU",
             name=f"{trial.number}",
-            tags=[dataset_name, f'imgsz_{trial_params["imgsz"]}', f'batch_{trial_params["batch"]}',f'{trial_params["optimizer"]}', gpu_name],
-            config=trial_params,
+            tags=[dataset_name, f'imgsz_{image_size}', f'batch_{batch_num}',f'{optimizer}', gpu_name, model_base],
+            config=addtional_configs | trial_params,
             reinit=True
         )
+
+                # Define custom callback
+        def custom_epoch_end_callback(trainer):
+            now = time.time()
+
+            if not hasattr(trainer, 'last_time'):
+                trainer.last_time = now
+
+            epoch_time = now - trainer.last_time
+            trainer.last_time = now
+            steps = len(trainer.train_loader)
+            batch_size = trainer.args.batch
+            samples = steps * batch_size
+            
+            epoch = trainer.epoch
+            metrics = trainer.metrics  # after validation step
+            loss = trainer.loss_items  # training loss components: box, cls, dfl
+            precision = metrics.get("metrics/precision(B)", 0.01)
+            recall = metrics.get("metrics/recall(B)", 0.99)
+            f1 = compute_f1_score(precision, recall)
+
+            mAP95 = metrics.get("metrics/mAP50-95(B)", 0)
+            # trial.report(mAP95, step=epoch)
+
+            wandb.log({
+                "epoch": epoch,
+                "train/box_loss": loss[0],
+                "train/cls_loss": loss[1],
+                "train/dfl_loss": loss[2],
+                "val/box_loss": metrics.get("val/box_loss", 0),
+                "val/cls_loss": metrics.get("val/cls_loss", 0),
+                "val/dfl_loss": metrics.get("val/dfl_loss", 0),
+                "metrics/mAP50": metrics.get("metrics/mAP50(B)", 0),
+                "metrics/mAP50-95": mAP95,
+                "metrics/precision": metrics.get("metrics/precision(B)", 0),
+                "metrics/recall": metrics.get("metrics/recall(B)", 0),
+                "metrics/f1": f1,
+                "samples_per_second": samples / epoch_time if epoch > 1 else 0,
+                "samples_trained": samples,
+                "time_per_epoch": epoch_time,
+            })
+
+            gc.collect()
+
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
         
         model.train(
