@@ -219,7 +219,7 @@ def clean_cuda_info():
 
 def run_optuna_tuning(dataset_name, args):
     storage_name = f'sqlite:///{args.storage or "yolo_hpo"}.db'
-    study_name =  args.storage or "yolo_hpo"
+    study_name =  args.storage or "yolo11m"
     
     print(f"🎯Loading Study: {study_name} storage:{storage_name} \n")
     study = optuna.create_study(
@@ -255,8 +255,8 @@ def select_pretrained_weights(dataset_name):
     #     print(f"latest available model: {latest_best_path}")
     #     return latest_best_path
     else:
-        print("❌ No previous models found — using base weights: yolo11s.pt")
-        return "yolo11s.pt"
+        print("❌ No previous models found — using base weights: yolo11m.pt")
+        return "yolo11m.pt"
            
 def compute_f1_score(precision, recall):
     if (precision + recall) == 0:
@@ -371,37 +371,58 @@ def objective(trial, dataset_name):
         #     # "degrees": trial.suggest_float("degrees", 0.0, 30.0),
         #     # "blur": trial.suggest_float("blur", 0.0, 0.08)
         # }
+        def suggest_optimizer_params(trial):
+            optimizer_name = "AdamW" # trial.suggest_categorical("optimizer", ["SGD", "AdamW"])
+            
+            if optimizer_name == "AdamW":
+                lr = trial.suggest_float("lr0", 1e-5, 1e-3, log=True)
+                weight_decay = trial.suggest_float("weight_decay", 1e-5, 0.05, log=True)
+                optimizer_params = {
+                    "optimizer": optimizer_name,
+                    "lr0": lr,
+                    "weight_decay": weight_decay
+                }
+            else:  # SGD fallback or other optimizer
+                lr = trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
+                momentum = trial.suggest_float("momentum", 0.6, 0.98)
+                optimizer_params = {
+                    "optimizer": optimizer_name,
+                    "lr0": lr,
+                    "momentum": momentum
+        }
+
+            return optimizer_params
 
         _009_6000ada_trial_params = {
-            "batch": trial.suggest_categorical("batch_0256", [128]), #600ada: 200 88
-            "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
-            "patience": trial.suggest_int("patience", 10, 12),
+            "batch": trial.suggest_categorical("batch_064", [64]), #600ada: 200 88
+            "imgsz": trial.suggest_categorical("imgsz1", [512]),
+            "patience": trial.suggest_int("patience", 10, 20),
             # step 1
-            "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
+            # "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
+            # "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-4),  # Regularization
             "lrf": trial.suggest_float("lrf", 0.055, 0.06),
             "box": trial.suggest_float("box", 9.45, 9.8),   #7.7
-            "cls": trial.suggest_float("cls", 0.05, 0.1495), #0.55
+            "cls": trial.suggest_float("cls", 0.05, 0.2), #0.55
             # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
             # "momentum": trial.suggest_float("momentum", 0.4, 0.98),   # For SGD or Adam
-            # "weight_decay": trial.suggest_float("weight_decay", 1e-5, 0.01),  # Regularization
             "mosaic": trial.suggest_float("mosaic", 0.11575, 0.15),
-            "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 12),
+            "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 15),
             # step 2
-            "scale": trial.suggest_float("scale", 0.2, 0.5),
-            "translate": trial.suggest_float("mosaic", 0.115, 0.125),
+            #"scale": trial.suggest_float("scale", 0.0, 0.25),
+            "translate": trial.suggest_float("translate", 0.115, 0.125),
             "hsv_h": trial.suggest_float("hsv_h", 0.0, 0.015),
-            "hsv_s": trial.suggest_float("hsv_s", 0.2, 0.9),
-            # "flipud": trial.suggest_float("flipud", 0.1, 0.45),
-            "fliplr": trial.suggest_float("fliplr", 0.08, 0.45),
+            "hsv_s": trial.suggest_float("hsv_s", 0.0, 0.2),
+            # "flipud": trial.suggest_float("flipud", 0.1, 0.4),
+            "fliplr": trial.suggest_float("fliplr", 0.08, 0.4),
             "bgr": trial.suggest_float("bgr", 0.0, 1.0),
-            "mixup": trial.suggest_float("mixup", 0.3, 0.7),
-            "cutmix": trial.suggest_float("cutmix", 0.2, 0.7),
-            "epochs": trial.suggest_int("epochs", 110, 140),
+            "mixup": trial.suggest_float("mixup", 0.2, 0.5),
+            "cutmix": trial.suggest_float("cutmix", 0.2, 0.5),
+            "epochs": trial.suggest_int("epochs", 120, 150),
             # "degrees": trial.suggest_float("degrees", 0.0, 30.0),
             # "blur": trial.suggest_float("blur", 0.0, 0.08)
         }
 
-        trial_params = _009_6000ada_trial_params
+        trial_params = {**_009_6000ada_trial_params, **suggest_optimizer_params(trial)}
 
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
         os.environ["WANDB_DISABLE_CODE"] = "true"  
@@ -414,21 +435,19 @@ def objective(trial, dataset_name):
             reinit=True
         )
 
-        print("Before model init:", torch.cuda.memory_allocated() / 1e6, "MB")
         model = YOLO(pretrained_weights_path)
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
-        print("After model init:", torch.cuda.memory_allocated() / 1e6, "MB")
         
         model.train(
             data=yaml_path,
             project=yolo_weights_dir,
             name=f"{version}",
             exist_ok=True,
-    	    single_cls=True,
+    	    # single_cls=True,
             verbose=False,
             amp=True,
-            # multi_scale=True, #memory costly
-            # cos_lr=True, #memory costly
+            multi_scale=True, #memory costly
+            cos_lr=True, #memory costly
             device=0,
             #trainer=MyTrainer,  # 👈 this is the key
             **trial_params
