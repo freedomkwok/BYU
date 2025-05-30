@@ -231,6 +231,7 @@ def run_optuna_tuning(dataset_name, args):
         study_name = "yolo_hpo"
         
     resume = args.resume if args.resume is not None else False
+    n_trials = 1 if args.saved_model is not None or resume else 90
     
     print(f"🎯Loading Study: {study_name} storage:{storage_name} \n")
     study = optuna.create_study(
@@ -239,7 +240,7 @@ def run_optuna_tuning(dataset_name, args):
         direction="minimize",
         load_if_exists=True,
     )
-    study.optimize(partial(objective, dataset_name=dataset_name, saved_model=args.saved_model, resume=resume), n_trials=90)
+    study.optimize(partial(objective, dataset_name=dataset_name, saved_model=args.saved_model, resume=resume), n_trials=n_trials)
 
     best_trial = study.best_trial
     best_version = f"motor_detector_{dataset_name}_optuna_trial_{best_trial.number}"
@@ -398,6 +399,7 @@ def objective(trial, dataset_name, saved_model=None, resume=False):
         trial_params = _yaml if saved_model is not None else  {**_009_6000ada_trial_params, **suggest_optimizer_params(trial)}
         pretrained_weights_path = _model if saved_model is not None else pretrained_weights_path
         
+        
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
         os.environ["WANDB_DISABLE_CODE"] = "true"  
         os.environ["WANDB_CONSOLE"] = "off"  
@@ -416,8 +418,12 @@ def objective(trial, dataset_name, saved_model=None, resume=False):
             version = f"{trial.number}_{model_base}_{dataset_name}_{batch_num}_{epochs}"
             version_dir = os.path.join(yolo_weights_dir, f"{version}")
             os.makedirs(version_dir, exist_ok=True)
+            trial_params.pop('save_dir', None)
+            trial_params.pop('name', None)
+            
 
         addtional_configs = {"_model_base": model_base, "_device": gpu_name, "_dataset_name": dataset_name}
+        print("model:", model_base, pretrained_weights_path)
         
         wandb.init(
             project="BYU",
@@ -472,21 +478,22 @@ def objective(trial, dataset_name, saved_model=None, resume=False):
 
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
         
-        model.train(
-            data=yaml_path,
-            project=yolo_weights_dir,
-            name=f"{version}",
-            exist_ok=True,
-    	    # single_cls=True,
-            verbose=False,
-            amp=True,
-            # multi_scale=True, #memory costly
-            cos_lr=True, #memory costly
-            device=0,
-            resume=resume,
-            #trainer=MyTrainer,  # 👈 this is the key
+        default_args = {
+            "data":yaml_path,
+            "project":yolo_weights_dir,
+            "name":f"{version}",
+            "exist_ok":True,
+    	    # "single_cls"=True,
+            "verbose":False,
+            "amp":True,
+            # "multi_scale"=True, #memory costly
+            "cos_lr":True, #memory costly
+            "device":0,
+            "resume":resume,
             **trial_params,
-        )
+        }
+        
+        model.train(**default_args)
         
         result = plot_dfl_loss_curve(version_dir)
         wandb.finish()
