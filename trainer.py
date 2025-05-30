@@ -240,7 +240,7 @@ def run_optuna_tuning(dataset_name, args):
         direction="minimize",
         load_if_exists=True,
     )
-    study.optimize(partial(objective, dataset_name=dataset_name, saved_model=args.saved_model, resume=resume), n_trials=n_trials)
+    study.optimize(partial(objective, dataset_name=dataset_name, study=study_name, saved_model=args.saved_model, resume=resume), n_trials=n_trials)
 
     best_trial = study.best_trial
     best_version = f"motor_detector_{dataset_name}_optuna_trial_{best_trial.number}"
@@ -289,7 +289,7 @@ def read_yaml(saved_model, resume):
     
     return fixed_args, model_str
         
-def objective(trial, dataset_name, saved_model=None, resume=False):
+def objective(trial, dataset_name, study, saved_model=None, resume=False):
     try:
         clean_cuda_info()
             
@@ -368,7 +368,7 @@ def objective(trial, dataset_name, saved_model=None, resume=False):
             return optimizer_params
 
         _009_6000ada_trial_params = {
-            "batch": trial.suggest_categorical("batch_o120combo", [72, 80, 108, 120]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch_o132combo", [72, 80, 108, 120, 136]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz1", [512]),
             "patience": trial.suggest_int("patience", 5, 22),
             # step 1
@@ -395,9 +395,9 @@ def objective(trial, dataset_name, saved_model=None, resume=False):
             "degrees": trial.suggest_float("degrees", 0.0, 25.0)
         }   
 
-        _yaml, _model =  read_yaml(saved_model, resume) ##could be None
+        _yaml, _model = read_yaml(saved_model, resume) if saved_model is not None else None, None ##could be None
         trial_params = _yaml if saved_model is not None else  {**_009_6000ada_trial_params, **suggest_optimizer_params(trial)}
-        pretrained_weights_path = _model if saved_model is not None else pretrained_weights_path
+        _pretrained_weights_path = _model if saved_model is not None else pretrained_weights_path
         
         
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
@@ -408,8 +408,8 @@ def objective(trial, dataset_name, saved_model=None, resume=False):
         image_size = trial_params["imgsz"]
         optimizer = trial_params["optimizer"]
         epochs = trial_params["epochs"]
-        model = YOLO(pretrained_weights_path)
-        model_base = model.yaml.get('yaml_file').replace(".yaml", "") or pretrained_weights_path.replace(".pt")
+        model = YOLO(_pretrained_weights_path)
+        model_base = model.yaml.get('yaml_file').replace(".yaml", "") or _pretrained_weights_path.replace(".pt")
         
         version = None
         if resume:
@@ -422,13 +422,13 @@ def objective(trial, dataset_name, saved_model=None, resume=False):
             trial_params.pop('name', None)
             
 
-        addtional_configs = {"_model_base": model_base, "_device": gpu_name, "_dataset_name": dataset_name}
-        print("model:", model_base, pretrained_weights_path)
+        addtional_configs = {"study":study, "_model_base": model_base, "_device": gpu_name, "_dataset_name": dataset_name}
+        print("model:", model_base, _pretrained_weights_path)
         
         wandb.init(
             project="BYU",
             name=f"{trial.number}",
-            tags=[dataset_name, f'imgsz_{image_size}', f'batch_{batch_num}',f'{optimizer}', gpu_name, model_base],
+            tags=[study, dataset_name, f'imgsz_{image_size}', f'batch_{batch_num}',f'{optimizer}', gpu_name, model_base],
             config=addtional_configs | trial_params,
             reinit=True
         )
