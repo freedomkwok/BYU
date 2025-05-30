@@ -6,7 +6,9 @@ yolo_dataset/
 yolo_dataset2/
 yolo_dataset3/
 yolo_weights/
+cleaned/
 selected/
+selected_safe/
 bad/
 *.json
 *.db
