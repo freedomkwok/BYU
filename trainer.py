@@ -22,6 +22,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
 import argparse
+import yaml
 
 # Set seeds for reproducibility
 np.random.seed(42)
@@ -47,6 +48,7 @@ TRAIN_SPLIT = 0.98  # 98% for training, 2% for validation
 local_dev =  "/workspace/BYU/notebooks" if "WANDB_API_KEY" in os.environ else "C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks"
 yolo_dataset_dir = os.path.join(local_dev, 'yolo_dataset')
 yolo_weights_dir = os.path.join(local_dev, 'yolo_weights')
+yolo_models_dir = os.path.join(local_dev, 'models')
 
 # Create necessary directories
 os.makedirs(yolo_weights_dir, exist_ok=True)
@@ -219,9 +221,17 @@ def clean_cuda_info():
 
 def run_optuna_tuning(dataset_name, args):
     storage_name = f'sqlite:///{args.storage or "yolo_hpo"}.db'
-    study_name =  args.study or "yolo_hpo"
-    resume = bool(args.resume) if args.resume is not None else False
-
+    
+    study_name = None
+    if args.study:
+        study_name = args.study
+    elif args.saved_model is not None:
+        study_name = "manual_test"
+    else:
+        study_name = "yolo_hpo"
+        
+    resume = args.resume if args.resume is not None else False
+    
     print(f"🎯Loading Study: {study_name} storage:{storage_name} \n")
     study = optuna.create_study(
         study_name=study_name,
@@ -229,7 +239,7 @@ def run_optuna_tuning(dataset_name, args):
         direction="minimize",
         load_if_exists=True,
     )
-    study.optimize(partial(objective, dataset_name=dataset_name, resume=resume), n_trials=90)
+    study.optimize(partial(objective, dataset_name=dataset_name, saved_model=args.saved_model, resume=resume), n_trials=90)
 
     best_trial = study.best_trial
     best_version = f"motor_detector_{dataset_name}_optuna_trial_{best_trial.number}"
@@ -264,7 +274,21 @@ def compute_f1_score(precision, recall):
         return 0.0
     return 2 * precision * recall / (precision + recall)
 
-def objective(trial, dataset_name, resume=False):
+def read_yaml(saved_model, resume):
+    fixed_args = {}
+    with open(os.path.join(yolo_weights_dir, saved_model, "args.yaml"), "r") as f:
+        fixed_args = yaml.safe_load(f)
+    
+    model_str= None
+    weight_path = os.path.join(yolo_weights_dir, saved_model, "weights/best.pt")
+    if not resume: # note this doesnt read the model jsut the yaml
+        model_str = fixed_args.get("model", "")
+    else:
+        model_str = weight_path
+    
+    return fixed_args, model_str
+        
+def objective(trial, dataset_name, saved_model=None, resume=False):
     try:
         clean_cuda_info()
             
@@ -321,6 +345,7 @@ def objective(trial, dataset_name, resume=False):
         #     # "degrees": trial.suggest_float("degrees", 0.0, 30.0),
         #     # "blur": trial.suggest_float("blur", 0.0, 0.08)
         # }
+        
         def suggest_optimizer_params(trial):
             optimizer_name = "AdamW" # trial.suggest_categorical("optimizer", ["SGD", "AdamW"])
             
@@ -369,8 +394,10 @@ def objective(trial, dataset_name, resume=False):
             "degrees": trial.suggest_float("degrees", 0.0, 25.0)
         }   
 
-        trial_params = {**_009_6000ada_trial_params, **suggest_optimizer_params(trial)}
-
+        _yaml, _model =  read_yaml(saved_model, resume) ##could be None
+        trial_params = _yaml if saved_model is not None else  {**_009_6000ada_trial_params, **suggest_optimizer_params(trial)}
+        pretrained_weights_path = _model if saved_model is not None else pretrained_weights_path
+        
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
         os.environ["WANDB_DISABLE_CODE"] = "true"  
         os.environ["WANDB_CONSOLE"] = "off"  
@@ -380,11 +407,15 @@ def objective(trial, dataset_name, resume=False):
         optimizer = trial_params["optimizer"]
         epochs = trial_params["epochs"]
         model = YOLO(pretrained_weights_path)
-        model_base = model.model.yaml.get('model')
-
-        version = f"{trial.number}_{model_base}_{dataset_name}_{batch_num}_{epochs}"
-        version_dir = os.path.join(yolo_weights_dir, f"{version}")
-        os.makedirs(version_dir, exist_ok=True)
+        model_base = model.yaml.get('yaml_file').replace(".yaml", "") or pretrained_weights_path.replace(".pt")
+        
+        version = None
+        if resume:
+            version = _yaml.get("name", "resumed_run")
+        else:
+            version = f"{trial.number}_{model_base}_{dataset_name}_{batch_num}_{epochs}"
+            version_dir = os.path.join(yolo_weights_dir, f"{version}")
+            os.makedirs(version_dir, exist_ok=True)
 
         addtional_configs = {"_model_base": model_base, "_device": gpu_name, "_dataset_name": dataset_name}
         
@@ -454,7 +485,7 @@ def objective(trial, dataset_name, resume=False):
             device=0,
             resume=resume,
             #trainer=MyTrainer,  # 👈 this is the key
-            **trial_params
+            **trial_params,
         )
         
         result = plot_dfl_loss_curve(version_dir)
@@ -477,7 +508,8 @@ def parse_args():
     parser.add_argument("--storage", type=str, help="(Optional) storage name")
     parser.add_argument("--dataset", type=str, help="(Optional) Dataset name")
     parser.add_argument("--epochs", type=str, help="(Optional) epochs")
-    parser.add_argument("--resume", type=str, help="(Optional) epochs")
+    parser.add_argument("--saved_model", type=str, help="(Optional) saved_model")
+    parser.add_argument("--resume", type=bool, help="(Optional) resume")
     return parser.parse_args()
 
 def setup_wandb():
