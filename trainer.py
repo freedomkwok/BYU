@@ -293,32 +293,33 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
     try:
         clean_cuda_info()
             
-        # trial_params = {
-        #     "batch": trial.suggest_categorical("batchx22", [240, 248]), #600ada: 200 88
-        #     "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
-        #     "patience": trial.suggest_int("patience", 9, 16),
-        #     # step 1
-        #     "lr0": trial.suggest_float("lr0", 0.005, 0.025, log=True),
-        #     "lrf": trial.suggest_float("lrf", 0.03, 0.12),
-        #     "box": trial.suggest_float("box", 7.5, 9.7),   #7.7
-        #     "cls": trial.suggest_float("cls", 0.05, 0.22), #0.55
-        #     # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
-        #     "mosaic": trial.suggest_float("mosaic", 0.08, 0.4),
-        #     "warmup_epochs": trial.suggest_int("warmup_epochs", 7, 16),
-        #     # step 2
-        #     "scale": trial.suggest_float("scale", 0.08, 0.5),
-        #     "translate": trial.suggest_float("mosaic", 0.08, 0.5),
-        #     # hsv_h=hsv_h,
-        #     # hsv_s=hsv_s,
-        #     # hsv_v=hsv_v,
-        #     "flipud": trial.suggest_float("flipud", 0.0, 0.45),
-        #     "fliplr": trial.suggest_float("fliplr", 0.0, 0.45),
-        #     #bgr=trial.suggest_float("bgr", 0.0, 1.0),
-        #     "mixup": trial.suggest_float("mixup", 0.3, 0.7),
-        #     "epochs": trial.suggest_int("mixup", 120, 140),
-        #     # "degrees": trial.suggest_float("degrees", 0.0, 30.0),
-        #     # "blur": trial.suggest_float("blur", 0.0, 0.08)
-        # }
+        trial_params = {
+            "batch": trial.suggest_categorical("batch_o132combo", [120, 160]), #600ada: 200 88
+            "imgsz": trial.suggest_categorical("imgsz640", [640]),
+            "patience": trial.suggest_int("patience", 5, 22),
+            # step 1
+            # "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
+            # "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-4),  # Regularization
+            "lrf": trial.suggest_float("lrf", 0.05, 0.009),
+            "box": trial.suggest_float("box", 9.45, 9.8),   #7.7
+            "cls": trial.suggest_float("cls", 0.05, 0.2), #0.55
+            "dfl": trial.suggest_float("dfl", 0.05, 1.8),
+            # "momentum": trial.suggest_float("momentum", 0.4, 0.98),   # For SGD or Adam
+            "mosaic": trial.suggest_float("mosaic", 0.11575, 0.13),
+            "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 15),
+            # step 2
+            # "scale": trial.suggest_float("scale", 0.0, 0.25),
+            "translate": trial.suggest_float("translate", 0.115, 0.125),
+            "hsv_h": trial.suggest_float("hsv_h", 0.0, 0.015),
+            "hsv_s": trial.suggest_float("hsv_s", 0.0, 0.2),
+            "flipud": trial.suggest_float("flipud", 0.0, 0.4),
+            "fliplr": trial.suggest_float("fliplr", 0.08, 0.4),
+            "bgr": trial.suggest_float("bgr", 0.0, 1.0),
+            "mixup": trial.suggest_float("mixup", 0.2, 0.7),
+            "cutmix": trial.suggest_float("cutmix", 0.2, 0.5),
+            "epochs": trial.suggest_int("epochs", 100, 160),
+            "degrees": trial.suggest_float("degrees", 0.0, 25.0)
+        }
 
         # _009_full_6000ada_trial_params = {
         #     "batch": trial.suggest_categorical("batch_0091", [248]), #600ada: 200 88
@@ -367,35 +368,35 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
 
             return optimizer_params
 
-        _009_6000ada_trial_params = {
-            "batch": trial.suggest_categorical("batch_o132combo", [72, 80, 108, 120, 136]), #600ada: 200 88
-            "imgsz": trial.suggest_categorical("imgsz1", [512]),
-            "patience": trial.suggest_int("patience", 5, 22),
-            # step 1
-            # "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
-            # "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-4),  # Regularization
-            "lrf": trial.suggest_float("lrf", 0.05, 0.07),
-            "box": trial.suggest_float("box", 9.45, 9.8),   #7.7
-            "cls": trial.suggest_float("cls", 0.05, 0.2), #0.55
-            "dfl": trial.suggest_float("dfl", 0.05, 1.8),
-            # "momentum": trial.suggest_float("momentum", 0.4, 0.98),   # For SGD or Adam
-            "mosaic": trial.suggest_float("mosaic", 0.11575, 0.15),
-            "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 15),
-            # step 2
-            # "scale": trial.suggest_float("scale", 0.0, 0.25),
-            "translate": trial.suggest_float("translate", 0.115, 0.125),
-            "hsv_h": trial.suggest_float("hsv_h", 0.0, 0.015),
-            "hsv_s": trial.suggest_float("hsv_s", 0.0, 0.2),
-            "flipud": trial.suggest_float("flipud", 0.0, 0.4),
-            "fliplr": trial.suggest_float("fliplr", 0.08, 0.4),
-            "bgr": trial.suggest_float("bgr", 0.0, 1.0),
-            "mixup": trial.suggest_float("mixup", 0.2, 0.5),
-            "cutmix": trial.suggest_float("cutmix", 0.2, 0.5),
-            "epochs": trial.suggest_int("epochs", 120, 150),
-            "degrees": trial.suggest_float("degrees", 0.0, 25.0)
-        }   
+        # _009_6000ada_trial_params = {
+        #     "batch": trial.suggest_categorical("batch_o132combo", [72, 80, 108, 120, 136]), #600ada: 200 88
+        #     "imgsz": trial.suggest_categorical("imgsz640", [640]),
+        #     "patience": trial.suggest_int("patience", 5, 22),
+        #     # step 1
+        #     # "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
+        #     # "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-4),  # Regularization
+        #     "lrf": trial.suggest_float("lrf", 0.05, 0.07),
+        #     "box": trial.suggest_float("box", 9.45, 9.8),   #7.7
+        #     "cls": trial.suggest_float("cls", 0.05, 0.2), #0.55
+        #     "dfl": trial.suggest_float("dfl", 0.05, 1.8),
+        #     # "momentum": trial.suggest_float("momentum", 0.4, 0.98),   # For SGD or Adam
+        #     "mosaic": trial.suggest_float("mosaic", 0.11575, 0.15),
+        #     "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 15),
+        #     # step 2
+        #     # "scale": trial.suggest_float("scale", 0.0, 0.25),
+        #     "translate": trial.suggest_float("translate", 0.115, 0.125),
+        #     "hsv_h": trial.suggest_float("hsv_h", 0.0, 0.015),
+        #     "hsv_s": trial.suggest_float("hsv_s", 0.0, 0.2),
+        #     "flipud": trial.suggest_float("flipud", 0.0, 0.4),
+        #     "fliplr": trial.suggest_float("fliplr", 0.08, 0.4),
+        #     "bgr": trial.suggest_float("bgr", 0.0, 1.0),
+        #     "mixup": trial.suggest_float("mixup", 0.2, 0.5),
+        #     "cutmix": trial.suggest_float("cutmix", 0.2, 0.5),
+        #     "epochs": trial.suggest_int("epochs", 120, 150),
+        #     "degrees": trial.suggest_float("degrees", 0.0, 25.0)
+        # }   
 
-        _yaml, _model = read_yaml(saved_model, resume) if saved_model is not None else None, None ##could be None
+        _yaml, _model = read_yaml(saved_model, resume) if saved_model is not None else (None, None) ##could be None
         trial_params = _yaml if saved_model is not None else  {**_009_6000ada_trial_params, **suggest_optimizer_params(trial)}
         _pretrained_weights_path = _model if saved_model is not None else pretrained_weights_path
         
@@ -410,6 +411,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
         epochs = trial_params["epochs"]
         model = YOLO(_pretrained_weights_path)
         model_base = model.yaml.get('yaml_file').replace(".yaml", "") or _pretrained_weights_path.replace(".pt")
+        trial_params["imgsz"] = 640
         
         version = None
         if resume:
@@ -420,6 +422,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
             os.makedirs(version_dir, exist_ok=True)
             trial_params.pop('save_dir', None)
             trial_params.pop('name', None)
+            
             
 
         addtional_configs = {"study":study, "_model_base": model_base, "_device": gpu_name, "_dataset_name": dataset_name}
