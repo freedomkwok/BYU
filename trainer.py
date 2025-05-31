@@ -377,7 +377,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
             "lrf": trial.suggest_float("lrf", 0.05, 0.07),
             "box": trial.suggest_float("box", 9.45, 9.8),   #7.7
             "cls": trial.suggest_float("cls", 0.05, 0.2), #0.55
-            # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
+            "dfl": trial.suggest_float("dfl", 0.05, 1.8),
             # "momentum": trial.suggest_float("momentum", 0.4, 0.98),   # For SGD or Adam
             "mosaic": trial.suggest_float("mosaic", 0.11575, 0.15),
             "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 15),
