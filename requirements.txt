@@ -11,3 +11,5 @@ opencv-python-headless
 torch
 ultralytics
 optuna
+netron
+torchinfo
