@@ -294,13 +294,13 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
         clean_cuda_info()
             
         trial_params = {
-            "batch": trial.suggest_categorical("batch_o132combo", [120, 160]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch", [160, 180]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz640", [640]),
             "patience": trial.suggest_int("patience", 5, 22),
             # step 1
             # "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
             # "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-4),  # Regularization
-            "lrf": trial.suggest_float("lrf", 0.05, 0.009),
+            "lrf": trial.suggest_float("lrf", 0.04, 0.09),
             "box": trial.suggest_float("box", 9.45, 9.8),   #7.7
             "cls": trial.suggest_float("cls", 0.05, 0.2), #0.55
             "dfl": trial.suggest_float("dfl", 0.05, 1.8),
@@ -349,7 +349,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
         # }
         
         def suggest_optimizer_params(trial):
-            optimizer_name = "AdamW" # trial.suggest_categorical("optimizer", ["SGD", "AdamW"])
+            optimizer_name = "SGD" #trial.suggest_categorical("optimizer", ["SGD", "AdamW"])
             
             if optimizer_name == "AdamW":
                 weight_decay = trial.suggest_float("weight_decay", 1e-5, 0.05)
@@ -359,7 +359,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
                     "weight_decay": weight_decay
                 }
             else:  # SGD fallback or other optimizer
-                momentum = trial.suggest_float("momentum", 0.6, 0.98)
+                momentum = trial.suggest_float("momentum", 0.4, 0.98)
                 optimizer_params = {
                     "optimizer": optimizer_name,
                     "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
@@ -395,7 +395,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
         #     "epochs": trial.suggest_int("epochs", 120, 150),
         #     "degrees": trial.suggest_float("degrees", 0.0, 25.0)
         # }   
-
+        _009_6000ada_trial_params = trial_params
         _yaml, _model = read_yaml(saved_model, resume) if saved_model is not None else (None, None) ##could be None
         trial_params = _yaml if saved_model is not None else  {**_009_6000ada_trial_params, **suggest_optimizer_params(trial)}
         _pretrained_weights_path = _model if saved_model is not None else pretrained_weights_path
