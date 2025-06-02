@@ -8,7 +8,7 @@ pip install tmux
 find ./yolo_dataset/ -name "*.jpg" -delete
 
 unzip -j yolo_dataset_009.zip 'yolo_dataset_009/*' -d yolo_dataset
-unzip yolo_dataset_009.zip 'yolo_dataset_009/*' -d yolo_dataset
+unzip yolo_dataset.zip 'yolo_dataset/*' -d ./
 
 unzip yolo_dataset_009.zip 'yolo_dataset_009/*' -d yolo_dataset
 
@@ -42,7 +42,7 @@ scp -P 16107 -i ~/.ssh/id_ed25519 root@209.170.80.132:/workspace/BYU/notebooks/y
 
 ps -eo pid,ppid,state,comm | awk '$3 == "Z" && $4 == "pt_main_thread" { print $2 }' | sort -u | xargs -r kill -9
 
-ps -eo pid,ppid,state,cmd | awk '/python trainer.py --dataset shared_009/ { print $1 }' | xargs -r kill -9
+ps -eo pid,ppid,state,cmd | awk '/python trainer.py --dataset shared_010_cleaned --study shared_010_cleaned/ { print $1 }' | xargs -r kill -9
 
 
 mkdir notebooks
@@ -78,3 +78,13 @@ apt install unzip
 pip install gdown
 pip install tmux
 pip install -r requirements.txt
+
+
+
+I have 10 years of experience in full-stack, backend, and big data technologies, having worked at four different ad-tech companies. I’ve mastered four programming languages—Scala, Python, Go, and C#—along with their associated ecosystems to achieve technical and business goals.
+Recent Projects:
+	•	Participated in Kaggle machine learning and LLM competitions such as BYU - Locating Bacterial Flagellar Motors 2025 and WSDM Cup - Multilingual Chatbot Arena, contributing to data engineering tasks including preprocessing, post-processing, and setting up ML pipelines.
+	•	Developed MLOps workflows to train multiple models with different parameters efficiently, and created tools to visualize results and performance metrics.
+Company Projects:
+	•	Built Spotify’s 500M audience targeting system from scratch.
+	•	Designed and implemented Samsung TV’s sessionizer and channel program pipeline, along with the supporting architecture.
