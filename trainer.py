@@ -240,7 +240,6 @@ def run_optuna_tuning(dataset_name, args):
         direction="minimize",
         load_if_exists=True,
     )
-    # def objective(trial, dataset_name, study, saved_model=None, resume=False, custom_model = None, frozen_epoch= 0, frozen_layer = 10):
     study.optimize(partial(objective, dataset_name=dataset_name, study=study_name, saved_model=args.saved_model, resume=resume, custom_model = args.custom_model, frozen_epoch = args.frozen_epoch, frozen_layer = args.frozen_layer), n_trials=n_trials)
 
     best_trial = study.best_trial
@@ -517,6 +516,8 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
                 layer = model.model.model[i]
                 for param in layer.parameters():
                     param.requires_grad = False
+                    
+        model.train(**default_args)
         
         result = plot_dfl_loss_curve(version_dir)
         wandb.finish()
