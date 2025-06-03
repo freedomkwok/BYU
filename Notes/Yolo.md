@@ -115,3 +115,31 @@ nn.Sequential(
 #   - [-1, 3, C2f, [64]]                                    # 10, 通道数和P3对齐    (P3/8-small) [B, 64, 32, 32]    [256 x 64 x 64]
 #   - [-1, 3, C2f, [176]]                                   # 13                        [B, 176, 16, 16]           [512 x 32 x 32] 
 #   - [-1, 3, C2f, [512]]                                   # 16                            [B, 512, 8, 8]         [1024 X 16 X 16]
+
+
+# | Zoom Scale | Image Size | Box Size (0.1×W/H) | P3/8 Grid (80×80) | P4/16 Grid (40×40) | P5/32 Grid (20×20) |
+# | ---------- | ---------- | ------------------ | ----------------- | ------------------ | ------------------ |
+# | 1.000      | 640×640    | 64                 | 64/8 = 8 cells    | 64/16 = 4 cells    | 64/32 = 2 cells    |
+# | 0.800      | 512×512    | 51.2               | 6.4 cells         | 3.2 cells          | 1.6 cells          |
+# | 0.567      | 362×362    | 36.2               | 4.5 cells         | 2.3 cells          | 1.1 cells          |
+# | 0.400      | 256×256    | 25.6               | 3.2 cells         | 1.6 cells          | 0.8 cells ❌        |
+# | 0.280      | 179×179    | 17.9               | 2.2 cells         | 1.1 cells          | 0.56 cells ❌       |
+
+# | Grid | Stride | Cell Size | Box Size = 64 | Box-to-Cell Ratio |
+# | ---- | ------ | --------- | ------------- | ----------------- |
+# | P3   | 8      | 8 px      | 64 px         | 64 / 8 = 8 ✅      |
+# | P5   | 32     | 32 px     | 64 px         | 64 / 32 = 2 ✅     |
+
+
+# 🔍 What Does "YOLO Can Detect a 32×32 Box" Actually Mean?
+# Let’s assume:
+
+# Input image: 640×640
+
+# YOLO has detection heads at:
+
+# P3: 8× stride → grid size: 80×80 → 1 cell = 8×8 pixels
+
+# P4: 16× stride → grid size: 40×40 → 1 cell = 16×16 pixels
+
+# P5: 32× stride → grid size: 20×20 → 1 cell = 32×32 pixels
