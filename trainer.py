@@ -399,7 +399,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
         _yaml, _model = read_yaml(saved_model, resume) if saved_model is not None else (None, None) ##could be None
         trial_params = _yaml if saved_model is not None else  {**_009_6000ada_trial_params, **suggest_optimizer_params(trial)}
         _pretrained_weights_path = _model if saved_model is not None else pretrained_weights_path
-        
+        print("_pretrained_weights_path", _pretrained_weights_path)
         
         os.environ["WANDB_DISABLE_ARTIFACTS"] = "true"
         os.environ["WANDB_DISABLE_CODE"] = "true"  
