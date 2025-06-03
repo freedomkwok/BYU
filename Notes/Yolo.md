@@ -143,3 +143,48 @@ nn.Sequential(
 # P4: 16× stride → grid size: 40×40 → 1 cell = 16×16 pixels
 
 # P5: 32× stride → grid size: 20×20 → 1 cell = 32×32 pixels
+
+
+# | Backbone            | Params (M) | FLOPs (GFLOPs) | Notes                                                         |
+# | ------------------- | ---------- | -------------- | ------------------------------------------------------------- |
+# | **CSPDarknet**      | 7–70M      | Low–High       | Native YOLO backbone (used in YOLOv4, YOLOv5)                 |
+# | **ResNet-18**       | \~11.7M    | \~1.8          | Shallow, efficient; good for small datasets or edge inference |
+# | **ResNet-34**       | \~21.8M    | \~3.6          | Balanced choice if ResNet-18 underperforms                    |
+# | **ResNet-50**       | \~25.6M    | \~4.1          | Common backbone for higher accuracy (heavier)                 |
+# | **MobileNetV2**     | \~3.4M     | \~0.3          | Extremely lightweight; great for real-time / mobile devices   |
+# | **EfficientNet-B0** | \~5.3M     | \~0.39         | High accuracy-per-FLOP; good on small/medium datasets         |
+# | **GhostNet**        | \~5M       | Very low       | Ultra-light, highly efficient; used in YOLOv7-Tiny            |
+# | **ShuffleNetV2**    | \~2.3M     | Very low       | Designed for low-latency mobile inference                     |
+# | **DenseNet-121**    | \~8M       | \~2.9          | Dense connections; better gradient flow but slower            |
+# | **ConvNeXt-T**      | \~28M      | \~4.5          | Modern ConvNet with transformer-like performance              |
+
+eFFICIENTB5 => YOLO
+Feature 2: torch.Size([1, 64, 80, 80])   P3 output: torch.Size([1, 128, 80, 80])
+Feature 3: torch.Size([1, 176, 40, 40])  P4 output: torch.Size([1, 256, 40, 40])
+Feature 4: torch.Size([1, 512, 20, 20])  P5 output: torch.Size([1, 512, 20, 20])
+
+
+| Module      | Purpose                                         | Use Case                                              |
+| ----------- | ----------------------------------------------- | ----------------------------------------------------- |
+| `Conv(1×1)` | Simple linear projection                        | Fast, low-overhead, good for basic channel alignment  |
+| `C2f`       | Conv + Feature Fusion (like C3 but lighter)     | Add some depth + interaction between channels         |
+| `C3k2`      | Variant of C3 block (Bottleneck with depthwise) | Better representation, regularization, spatial mixing |
+| `C3`        | Default YOLOv5 C3 block                         | Deeper feature transform for detection-like use       |
+
+🔍 Should You Fine-Tune All Layers?
+✅ Full fine-tuning is beneficial when:
+| Situation                                              | Why full fine-tuning helps                                 |
+| ------------------------------------------------------ | ---------------------------------------------------------- |
+| Your target domain is **very different** from ImageNet | Pretrained features may not transfer fully                 |
+| Your dataset is **large enough** (e.g., 1k+ examples)  | Avoids overfitting, lets model adapt deeply                |
+| You want **best possible accuracy**                    | Especially for hard-to-see features (e.g. cells, bacteria) |
+
+✅ What usually works best in practice:
+🔄 Progressive unfreezing
+Start with the backbone frozen, train just your neck + detection head.
+After a few epochs (e.g., 10–20), unfreeze the deeper blocks of EfficientNet.
+Eventually, unfreeze the whole model, and continue training with a lower learning rate (e.g., 10× lower for backbone than head).
+This gives:
+✅ Fast convergence
+✅ Stable gradients
+✅ Maximum performance when needed

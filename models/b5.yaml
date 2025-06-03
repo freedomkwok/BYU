@@ -1,0 +1,31 @@
+
+nc: 1  # number of classes
+backbone:
+  - [-1, 1, Timm, [512, 'efficientnet_b5', True, True, 0, True]]  # Layer 0: returns list of block outputs
+  - [0, 1, Index, [64, 2]]     # Layer 1: P3 = Block 2 output (32x32)
+  - [0, 1, Index, [176, 3]]    # Layer 2: P4 = Block 4 output (16x16)
+  - [0, 1, Index, [512, 4]]    # Layer 3: P5 = Block 6 output (8x8)
+  - [-1, 1, SPPF, [512, 5]]    # Layer 4: SPPF on P5 (8x8) to enhance receptive field
+
+head:
+  # 上采样/拼接/检测头，通道数建议与 backbone 输出保持一致
+  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]            # 5,  #scale_factor=2 SPPF上采样 (8->16) Upsamples the output from Layer 4, which has 512 channels from SPPF.
+  - [[-1, 2], 1, Concat, [1]]                             # 6, 拼接16x16的两个特征 [-1, 2] =>  prev + P4 =>  512 + 176 = 688
+  - [-1, 3, C2f, [176]]                                   # 7, 通道数和P4对齐  C2f(in_channels=688, out_channels=176) Tensor shape: [B, 688, 16, 16] => [B, 176, 16, 16]
+
+  - [-1, 1, nn.Upsample, [None, 2, 'nearest']]            # 8, 上采样 (16->32)   [B, 176, 32, 32]
+  - [[-1, 1], 1, Concat, [1]]                             # 9, 拼接32x32的两个特征  [-1, 1] => prev + P3 =>  176 + 64 => [B, 240, 32, 32]
+  - [-1, 3, C2f, [64]]                                    # 10, 通道数和P3对齐    (P3/8-small) [B, 64, 32, 32] 
+  - [-1, 2, C2f, [128]]  # new                            # 11
+
+  - [-1, 1, Conv, [128, 3, 2]]                             # 12, 下采样 (32->16)   [B, 128, 16, 16]
+  - [[-1, 7], 1, Concat, [1]]                             # 13, 拼接16x16的两个特征     176 + 128 [B, 304, 16, 16]
+  - [-1, 3, C2f, [304]]                                   # 14                        [B, 304, 16, 16]
+  - [-1, 2, C2f, [256]]   # new                           # 15
+
+  - [-1, 1, Conv, [256, 3, 2]]                            # 16, 下采样 (16->8)          [B, 176, 8, 8]
+  - [[-1, 4], 1, Concat, [1]]                             # 17, 拼接8x8的两个特征       256 + 512 = 768  [B, 768, 8, 8]
+  - [-1, 3, C2f, [768]]                                   # 18                            [B, 512, 8, 8]
+  - [-1, 3, C2f, [512]]   # new                            # 19
+  
+  - [[11, 15, 19], 1, Detect, [nc]]                       # 17, 检测头, 多尺度

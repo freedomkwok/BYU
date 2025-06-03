@@ -104,15 +104,44 @@
 
 #   - [[10, 13, 16], 1, Detect, [nc]]                       # 17, 检测头, 多尺度
 
+
+# Feature 0: torch.Size([1, 24, 228, 228])
+# Feature 1: torch.Size([1, 40, 114, 114])
+# Feature 2: torch.Size([1, 64, 57, 57])
+# Feature 3: torch.Size([1, 176, 29, 29])
+# Feature 4: torch.Size([1, 512, 15, 15])
+
+
 import os
 from ultralytics import YOLO
+import torch
 local_dev =  "/workspace/BYU/notebooks" if "WANDB_API_KEY" in os.environ else "C:/Users/Freedomkwok2022/ML_Learn/BYU/notebooks"
 yolo_dataset_dir = os.path.join(local_dev, 'yolo_dataset')
 yolo_weights_dir = os.path.join(local_dev, 'yolo_weights')
 yolo_models_dir = os.path.join(local_dev, 'models')
 
+img = torch.rand(1, 3, 640, 640)
 
 efficientnet_b5_yolo_config_path = os.path.join(yolo_models_dir, "efficientnet_b5_yolo_config.yaml")
 
 model = YOLO(efficientnet_b5_yolo_config_path,verbose=False)
 print(model.info())
+feature_outputs = {}
+
+def hook_fn(name):
+    def fn(module, input, output):
+        feature_outputs[name] = output
+    return fn
+
+# Register hooks on YOLOv8 internal layers — adjust indices as needed
+model.model.model[11].register_forward_hook(hook_fn("P3"))
+model.model.model[15].register_forward_hook(hook_fn("P4"))
+model.model.model[19].register_forward_hook(hook_fn("P5"))
+
+# Run inference to trigger hooks
+with torch.no_grad():
+    _ = model(img)
+
+# Print captured feature shapes
+for name, feat in feature_outputs.items():
+    print(f"{name} output shape: {feat.shape}")

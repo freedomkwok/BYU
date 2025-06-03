@@ -240,7 +240,7 @@ def run_optuna_tuning(dataset_name, args):
         direction="minimize",
         load_if_exists=True,
     )
-    study.optimize(partial(objective, dataset_name=dataset_name, study=study_name, saved_model=args.saved_model, resume=resume), n_trials=n_trials)
+    study.optimize(partial(objective, dataset_name=dataset_name, study=study_name, saved_model=args.saved_model, resume=resume, custom_model = args.custom_model, frozen_epoch = args.frozen_epoch, frozen_layer = args.frozen_layer), n_trials=n_trials)
 
     best_trial = study.best_trial
     best_version = f"motor_detector_{dataset_name}_optuna_trial_{best_trial.number}"
@@ -255,7 +255,11 @@ def run_optuna_tuning(dataset_name, args):
     print(f"  Weights: {best_weights_path}")
     
 # --- Enhanced pretrained model selector ---
-def select_pretrained_weights(dataset_name):
+def select_pretrained_weights(dataset_name, custom_model = None):
+    if custom_model:
+        yolo_models_dir = os.path.join(local_dev, 'models')
+        return os.path.join(yolo_models_dir, f"{custom_model}.yaml")
+    
     best_model_info = get_best_model_for_dataset(dataset_name)
     latest_version, latest_best_path = get_latest_model_version(yolo_weights_dir)
 
@@ -289,12 +293,12 @@ def read_yaml(saved_model, resume):
     
     return fixed_args, model_str
         
-def objective(trial, dataset_name, study, saved_model=None, resume=False):
+def objective(trial, dataset_name, study, saved_model=None, resume=False, custom_model = None, frozen_epoch= 0, frozen_layer = 10):
     try:
         clean_cuda_info()
             
         trial_params = {
-            "batch": trial.suggest_categorical("batch", [160, 180]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch24", [24, 180]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz640", [640]),
             "patience": trial.suggest_int("patience", 5, 22),
             # step 1
@@ -410,21 +414,19 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
         optimizer = trial_params["optimizer"]
         epochs = trial_params["epochs"]
         model = YOLO(_pretrained_weights_path)
-        model_base = model.yaml.get('yaml_file').replace(".yaml", "") or _pretrained_weights_path.replace(".pt")
+        model_base = custom_model or model.yaml.get('yaml_file').replace(".yaml", "") or _pretrained_weights_path.replace(".pt")
         trial_params["imgsz"] = 640
         
         version = None
         if resume:
             version = _yaml.get("name", "resumed_run")
         else:
-            version = f"{trial.number}_{model_base}_{dataset_name}_{batch_num}_{epochs}"
+            version = f"{dataset_name}_{model_base}_{batch_num}_{epochs}_{trial.number}"
             version_dir = os.path.join(yolo_weights_dir, f"{version}")
             os.makedirs(version_dir, exist_ok=True)
-            trial_params.pop('save_dir', None)
-            trial_params.pop('name', None)
+            # trial_params.pop('save_dir', None)
+            # trial_params.pop('name', None)
             
-            
-
         addtional_configs = {"study":study, "_model_base": model_base, "_device": gpu_name, "_dataset_name": dataset_name}
         print("model:", model_base, _pretrained_weights_path)
         
@@ -439,7 +441,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
                 # Define custom callback
         def custom_epoch_end_callback(trainer):
             now = time.time()
-
+        
             if not hasattr(trainer, 'last_time'):
                 trainer.last_time = now
 
@@ -478,9 +480,22 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
             })
 
             gc.collect()
+            
+        def custom_epoch_start_callback(trainer):
+            epoch = trainer.epoch
+            if trainer.epoch == frozen_epoch:
+                print(f"🔓 Unfreezing backbone at epoch {epoch}")
+                for i in range(5):  # Adjust the range based on how many layers you initially froze
+                    for p in trainer.model.model[i].parameters():
+                        p.requires_grad = True
 
-        model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
+                # 👇 Rebuild optimizer so it sees the newly trainable params
+                trainer.set_optimizer()
         
+        model.add_callback("on_train_epoch_start", custom_epoch_start_callback)        
+        model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
+     
+                
         default_args = {
             "data":yaml_path,
             "project":yolo_weights_dir,
@@ -496,6 +511,11 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False):
             **trial_params,
         }
         
+        ##frozen_layer init
+        for i in range(frozen_layer):  # Freeze first 10 layers
+            for p in model.model.model[i].parameters():
+                p.requires_grad = False
+                
         model.train(**default_args)
         
         result = plot_dfl_loss_curve(version_dir)
@@ -520,6 +540,9 @@ def parse_args():
     parser.add_argument("--epochs", type=str, help="(Optional) epochs")
     parser.add_argument("--saved_model", type=str, help="(Optional) saved_model")
     parser.add_argument("--resume", type=bool, help="(Optional) resume")
+    parser.add_argument("--custom_model", type=str, help="(Optional) resume")
+    parser.add_argument("--f_epoch", dest="frozen_epoch", type=int, default=0, help="Number of epochs to freeze the backbone (default: 0)")
+    parser.add_argument("--f_layer", dest="frozen_layer", type=int, default=5, help="Number of layer to freeze the backbone (default: 0)")
     return parser.parse_args()
 
 def setup_wandb():
@@ -534,7 +557,9 @@ def main():
     global yaml_path, pretrained_weights_path
     print("Starting YOLO Optuna parameter tuning...")
     dataset_name = args.dataset or "shared_007"
-    pretrained_weights_path = select_pretrained_weights(dataset_name)  ## load weight
+
+    
+    pretrained_weights_path = select_pretrained_weights(dataset_name, args.custom_model)  ## load weight
 
     yaml_path, *_ = prepare_dataset(dataset_name) ## load file
 
