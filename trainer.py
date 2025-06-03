@@ -240,6 +240,7 @@ def run_optuna_tuning(dataset_name, args):
         direction="minimize",
         load_if_exists=True,
     )
+    # def objective(trial, dataset_name, study, saved_model=None, resume=False, custom_model = None, frozen_epoch= 0, frozen_layer = 10):
     study.optimize(partial(objective, dataset_name=dataset_name, study=study_name, saved_model=args.saved_model, resume=resume, custom_model = args.custom_model, frozen_epoch = args.frozen_epoch, frozen_layer = args.frozen_layer), n_trials=n_trials)
 
     best_trial = study.best_trial
@@ -415,7 +416,6 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
         epochs = trial_params["epochs"]
         model = YOLO(_pretrained_weights_path)
         model_base = custom_model or model.yaml.get('yaml_file').replace(".yaml", "") or _pretrained_weights_path.replace(".pt")
-        trial_params["imgsz"] = 640
         
         version = None
         if resume:
@@ -512,11 +512,11 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
         }
         
         ##frozen_layer init
-        for i in range(frozen_layer):  # Freeze first 10 layers
-            for p in model.model.model[i].parameters():
-                p.requires_grad = False
-                
-        model.train(**default_args)
+        if frozen_layer > 0:
+            for i in range(frozen_layer):
+                layer = model.model.model[i]
+                for param in layer.parameters():
+                    param.requires_grad = False
         
         result = plot_dfl_loss_curve(version_dir)
         wandb.finish()
