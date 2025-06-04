@@ -311,7 +311,7 @@ def objective(trial, args):
         trial.set_user_attr("frozen_layer", frozen_layer)    
         
         trial_params = {
-            "batch": trial.suggest_categorical("batch1", [1]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch161", [16]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz640", [640]),
             "patience": trial.suggest_int("patience", 5, 22),
             # step 1
@@ -553,16 +553,16 @@ def objective(trial, args):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="YOLO Optuna Tuning")
-    parser.add_argument("--study", type=str, help="(Optional) study name")
+    parser.add_argument("--study", type=str, help="(Optional) study name", default="shared_010_scaled")
     parser.add_argument("--storage", type=str, help="(Optional) storage name")
-    parser.add_argument("--dataset", type=str, help="(Optional) Dataset name")
+    parser.add_argument("--dataset", type=str, help="(Optional) Dataset name", default="shared_010_scaled")
     parser.add_argument("--epochs", type=str, help="(Optional) epochs")
     parser.add_argument("--saved_model", type=str, help="(Optional) saved_model")
     parser.add_argument("--resume", type=bool, default = False, help="resume")
-    parser.add_argument("--custom_model", type=str, help="(Optional) resume")
-    parser.add_argument("--f_epoch", dest="frozen_epoch", type=int, default=10, help="Number of epochs to freeze the backbone (default: 0)")
+    parser.add_argument("--custom_model", type=str, help="(Optional) custom_model", default="b5")
+    parser.add_argument("--f_epoch", dest="frozen_epoch", type=int, default=20, help="Number of epochs to freeze the backbone (default: 0)")
     parser.add_argument("--f_layer", dest="frozen_layer", type=int, default=5, help="Number of layer to freeze the backbone (default: 0)")
-    parser.add_argument("--uf_epoch", dest="unfreeze_epoch", type=int, default=5, help="Number of epoch to unfreeze a layer the backbone (default: 0)")
+    parser.add_argument("--uf_epoch", dest="unfreeze_epoch", type=int, default=10, help="Number of epoch to unfreeze a layer the backbone (default: 0)")
     return parser.parse_args()
 
 def setup_wandb():
