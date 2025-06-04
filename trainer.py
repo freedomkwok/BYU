@@ -298,7 +298,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
         clean_cuda_info()
             
         trial_params = {
-            "batch": trial.suggest_categorical("batch24", [24, 180]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch161", [16]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz640", [640]),
             "patience": trial.suggest_int("patience", 5, 22),
             # step 1
@@ -318,39 +318,12 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
             "hsv_s": trial.suggest_float("hsv_s", 0.0, 0.2),
             "flipud": trial.suggest_float("flipud", 0.0, 0.4),
             "fliplr": trial.suggest_float("fliplr", 0.08, 0.4),
-            "bgr": trial.suggest_float("bgr", 0.0, 1.0),
+            "bgr": trial.suggest_float("bgr", 0.8, 1.0),
             "mixup": trial.suggest_float("mixup", 0.2, 0.7),
-            "cutmix": trial.suggest_float("cutmix", 0.2, 0.5),
+            "cutmix": trial.suggest_float("cutmix", 0.05, 0.35),
             "epochs": trial.suggest_int("epochs", 100, 160),
             "degrees": trial.suggest_float("degrees", 0.0, 25.0)
         }
-
-        # _009_full_6000ada_trial_params = {
-        #     "batch": trial.suggest_categorical("batch_0091", [248]), #600ada: 200 88
-        #     "imgsz": trial.suggest_categorical("imgsz", [512, 640]),
-        #     "patience": trial.suggest_int("patience", 10, 12),
-        #     # step 1
-        #     "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
-        #     "lrf": trial.suggest_float("lrf", 0.055, 0.056),
-        #     "box": trial.suggest_float("box", 9.45, 9.5),   #7.7
-        #     "cls": trial.suggest_float("cls", 0.1, 0.1495), #0.55
-        #     # "dfl": trial.suggest_float("dfl", 0.1, 1.3),
-        #     "mosaic": trial.suggest_float("mosaic", 0.11575, 0.145),
-        #     "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 12),
-        #     # step 2
-        #     "scale": trial.suggest_float("scale", 0.475, 0.5),
-        #     "translate": trial.suggest_float("mosaic", 0.115, 0.125),
-        #     # hsv_h=hsv_h,
-        #     # hsv_s=hsv_s,
-        #     # hsv_v=hsv_v,
-        #     "flipud": trial.suggest_float("flipud", 0.1, 0.45),
-        #     "fliplr": trial.suggest_float("fliplr", 0.08, 0.45),
-        #     #bgr=trial.suggest_float("bgr", 0.0, 1.0),
-        #     "mixup": trial.suggest_float("mixup", 0.3, 0.7),
-        #     "epochs": trial.suggest_int("epochs", 120, 140),
-        #     # "degrees": trial.suggest_float("degrees", 0.0, 30.0),
-        #     # "blur": trial.suggest_float("blur", 0.0, 0.08)
-        # }
         
         def suggest_optimizer_params(trial):
             optimizer_name = "SGD" #trial.suggest_categorical("optimizer", ["SGD", "AdamW"])
@@ -484,12 +457,24 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
             epoch = trainer.epoch
             if trainer.epoch == frozen_epoch:
                 print(f"🔓 Unfreezing backbone at epoch {epoch}")
-                for i in range(5):  # Adjust the range based on how many layers you initially froze
+                for i in range(frozen_layer):  # Adjust the range based on how many layers you initially froze
                     for p in trainer.model.model[i].parameters():
                         p.requires_grad = True
 
-                # 👇 Rebuild optimizer so it sees the newly trainable params
-                trainer.set_optimizer()
+                optimizer_name = trainer.args.optimizer
+                optimizer_cls = torch.optim.SGD if optimizer_name == 'SGD' else torch.optim.AdamW
+                trainer.optimizer = optimizer_cls(
+                    filter(lambda p: p.requires_grad, trainer.model.parameters()),
+                    lr=trainer.args.lr0,
+                    momentum=trainer.args.momentum if hasattr(trainer.args, 'momentum') else 0.9,
+                    weight_decay=trainer.args.weight_decay if hasattr(trainer.args, 'weight_decay') else 5e-4,
+                )
+
+                for pg in trainer.optimizer.param_groups:
+                    if "initial_lr" not in pg:
+                        pg["initial_lr"] = pg["lr"]
+                trainer._unfrozen = True
+
         
         model.add_callback("on_train_epoch_start", custom_epoch_start_callback)        
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
@@ -542,7 +527,7 @@ def parse_args():
     parser.add_argument("--saved_model", type=str, help="(Optional) saved_model")
     parser.add_argument("--resume", type=bool, help="(Optional) resume")
     parser.add_argument("--custom_model", type=str, help="(Optional) resume")
-    parser.add_argument("--f_epoch", dest="frozen_epoch", type=int, default=0, help="Number of epochs to freeze the backbone (default: 0)")
+    parser.add_argument("--f_epoch", dest="frozen_epoch", type=int, default=10, help="Number of epochs to freeze the backbone (default: 0)")
     parser.add_argument("--f_layer", dest="frozen_layer", type=int, default=5, help="Number of layer to freeze the backbone (default: 0)")
     return parser.parse_args()
 

@@ -42,7 +42,7 @@ scp -P 16107 -i ~/.ssh/id_ed25519 root@209.170.80.132:/workspace/BYU/notebooks/y
 
 ps -eo pid,ppid,state,comm | awk '$3 == "Z" && $4 == "pt_main_thread" { print $2 }' | sort -u | xargs -r kill -9
 
-ps -eo pid,ppid,state,cmd | awk '/python trainer.py --dataset shared_010_cleaned --study shared_010_cleaned/ { print $1 }' | xargs -r kill -9
+ps -eo pid,ppid,state,cmd | awk '/python trainer.py --dataset shared_010_scaled --study shared_010_scaled --custom_model b5 --f_epoch 2/ { print $1 }' | xargs -r kill -9
 
 
 mkdir notebooks
