@@ -220,7 +220,8 @@ def clean_cuda_info():
         print(f"  - Max Memory Alloc : {torch.cuda.max_memory_allocated(i) / 1e6:.2f} MB\n")
 
 def run_optuna_tuning(dataset_name, args):
-    storage_name = f'sqlite:///{args.storage or "yolo_hpo"}.db'
+    args.storage = args.storage or "yolo_hpo"
+    storage_name = f'sqlite:///{args.storage}.db'
     
     study_name = None
     if args.study:
@@ -300,18 +301,20 @@ def objective(trial, args):
         clean_cuda_info()
         dataset_name = args.dataset 
         study = args.study
-        frozen_epoch = args.frozen_epoch 
-        frozen_layer = args.frozen_layer
         saved_model = args.saved_model
         resume = args.resume
         custom_model = args.custom_model
-        unfreeze_epoch = args.unfreeze_epoch
+        report_epoch  = args.report_epoch
+        report_every  = args.report_every
         
-        trial.suggest_int("frozen_epoch", frozen_epoch, frozen_epoch + 20)
-        trial.set_user_attr("frozen_layer", frozen_layer)    
+        trial.suggest_int("frozen_epoch", args.frozen_epoch, args.frozen_epoch + 20)
+        trial.set_user_attr("frozen_layer", args.frozen_layer)
+        trial.set_user_attr("unfreeze_every", args.unfreeze_every)
+        trial.set_user_attr("storage", args.storage)    
+        args_dict = vars(args)
         
         trial_params = {
-            "batch": trial.suggest_categorical("batch161", [16]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch48", [48]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz640", [640]),
             "patience": trial.suggest_int("patience", 5, 22),
             # step 1
@@ -420,7 +423,7 @@ def objective(trial, args):
             project="BYU",
             name=f"{trial.number}",
             tags=[study, dataset_name, f'imgsz_{image_size}', f'batch_{batch_num}',f'{optimizer}', gpu_name, model_base],
-            config=addtional_configs | trial_params,
+            config=addtional_configs | trial_params | args_dict,
             reinit=True
         )
                 # Define custom callback
@@ -464,6 +467,13 @@ def objective(trial, args):
                 "time_per_epoch": epoch_time,
             })
 
+            if epoch >= report_epoch and epoch % report_every == 0:
+                try:
+                    best_epoch, best_val_loss = plot_dfl_loss_curve(version_dir)
+                    print(f"📈 [Epoch {epoch}] Best Val DFL Loss so far: {best_val_loss:.4f} at epoch {best_epoch}")
+                except Exception as e:
+                    print(f"⚠️ Failed to plot DFL loss curve at epoch {epoch}: {e}")
+                
             gc.collect()
             
         def rebuild_optimizer(trainer):
@@ -498,7 +508,7 @@ def objective(trial, args):
             epoch = trainer.epoch
             frozen_epoch = getattr(trainer, 'frozen_epoch', 10)
             frozen_layer_index = getattr(trainer, 'frozen_layer', -1)
-            unfreeze_every = getattr(trainer, 'unfreeze_epoch', 5)
+            unfreeze_every = getattr(trainer, 'unfreeze_every', 1)
 
             # 🧨 Skip all freezing logic if frozen_layer is -1
             if frozen_layer_index < 0:
@@ -554,15 +564,17 @@ def objective(trial, args):
 def parse_args():
     parser = argparse.ArgumentParser(description="YOLO Optuna Tuning")
     parser.add_argument("--study", type=str, help="(Optional) study name", default="shared_010_scaled")
-    parser.add_argument("--storage", type=str, help="(Optional) storage name")
+    parser.add_argument("--storage", type=str, help="(Optional) storage name", default="shared_010_scaled")
     parser.add_argument("--dataset", type=str, help="(Optional) Dataset name", default="shared_010_scaled")
     parser.add_argument("--epochs", type=str, help="(Optional) epochs")
     parser.add_argument("--saved_model", type=str, help="(Optional) saved_model")
     parser.add_argument("--resume", type=bool, default = False, help="resume")
     parser.add_argument("--custom_model", type=str, help="(Optional) custom_model", default="b5")
-    parser.add_argument("--f_epoch", dest="frozen_epoch", type=int, default=20, help="Number of epochs to freeze the backbone (default: 0)")
     parser.add_argument("--f_layer", dest="frozen_layer", type=int, default=5, help="Number of layer to freeze the backbone (default: 0)")
-    parser.add_argument("--uf_epoch", dest="unfreeze_epoch", type=int, default=10, help="Number of epoch to unfreeze a layer the backbone (default: 0)")
+    parser.add_argument("--f_epoch", dest="frozen_epoch", type=int, default=20, help="Number of epochs to freeze the backbone (default: 0)")
+    parser.add_argument("--uf_every", dest="unfreeze_every", type=int, default=5, help="Number of epoch to unfreeze a layer the backbone (default: 0)")
+    parser.add_argument("--report_epoch", dest="report_epoch", type=int, default=50, help="Number of epoch to unfreeze a layer the backbone (default: 0)")
+    parser.add_argument("--report_every", dest="report_every", type=int, default=10, help="Number of epoch to unfreeze a layer the backbone (default: 0)")
     return parser.parse_args()
 
 def setup_wandb():
