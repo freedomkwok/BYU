@@ -307,11 +307,14 @@ def objective(trial, args):
         report_epoch  = args.report_epoch
         report_every  = args.report_every
         
-        trial.suggest_int("frozen_epoch", args.frozen_epoch, args.frozen_epoch + 20)
         trial.set_user_attr("frozen_layer", args.frozen_layer)
-        trial.set_user_attr("unfreeze_every", args.unfreeze_every)
-        trial.set_user_attr("storage", args.storage)    
+        frozen_layer_index = args.frozen_layer - 1
+        
+        frozen_epoch = trial.suggest_int("frozen_epoch", args.frozen_epoch, args.frozen_epoch + 20)
+        unfreeze_every = trial.set_user_attr("unfreeze_every", args.unfreeze_every)
+        
         args_dict = vars(args)
+        print("🧨args:", args_dict)
         
         trial_params = {
             "batch": trial.suggest_categorical("batch48", [48]), #600ada: 200 88
@@ -341,8 +344,9 @@ def objective(trial, args):
             "degrees": trial.suggest_float("degrees", 0.0, 25.0)
         }
         
+        use_adamw = True  # hardcoded or passed via args
         def suggest_optimizer_params(trial):
-            optimizer_name = "SGD" #trial.suggest_categorical("optimizer", ["SGD", "AdamW"])
+            optimizer_name = "AdamW" if use_adamw else "SGD" #trial.suggest_categorical("optimizer", ["SGD", "AdamW"])
             
             trial.set_user_attr("optimizer", optimizer_name)
             if optimizer_name == "AdamW":
@@ -444,11 +448,20 @@ def objective(trial, args):
             loss = trainer.loss_items  # training loss components: box, cls, dfl
             precision = metrics.get("metrics/precision(B)", 0.01)
             recall = metrics.get("metrics/recall(B)", 0.99)
-            f1 = compute_f1_score(precision, recall)
-
             mAP95 = metrics.get("metrics/mAP50-95(B)", 0)
+            f1 = compute_f1_score(precision, recall)
             # trial.report(mAP95, step=epoch)
-
+            
+            lr_dict = {}
+            for i, pg in enumerate(trainer.optimizer.param_groups):
+                lr = pg.get("lr", None)
+                initial_lr = pg.get("initial_lr", None)
+                
+                if lr is not None:
+                    lr_dict[f"lr/{i}"] = lr
+                if initial_lr is not None:
+                    lr_dict[f"initial_lr/{i}"] = initial_lr
+                    
             wandb.log({
                 "epoch": epoch,
                 "train/box_loss": loss[0],
@@ -465,6 +478,7 @@ def objective(trial, args):
                 "samples_per_second": samples / epoch_time if epoch > 1 else 0,
                 "samples_trained": samples,
                 "time_per_epoch": epoch_time,
+                **lr_dict
             })
 
             if epoch >= report_epoch and epoch % report_every == 0:
@@ -477,7 +491,6 @@ def objective(trial, args):
             gc.collect()
             
         def rebuild_optimizer(trainer):
-            use_adamw = True  # hardcoded or passed via args
             optimizer_cls = torch.optim.AdamW if use_adamw else torch.optim.SGD
 
             trainer.optimizer = optimizer_cls(
@@ -506,10 +519,7 @@ def objective(trial, args):
         
         def custom_epoch_start_callback(trainer):
             epoch = trainer.epoch
-            frozen_epoch = getattr(trainer, 'frozen_epoch', 10)
-            frozen_layer_index = getattr(trainer, 'frozen_layer', -1)
-            unfreeze_every = getattr(trainer, 'unfreeze_every', 1)
-
+           
             # 🧨 Skip all freezing logic if frozen_layer is -1
             if frozen_layer_index < 0:
                 return
@@ -524,8 +534,9 @@ def objective(trial, args):
             if epoch >= frozen_epoch and (epoch - frozen_epoch) % unfreeze_every == 0:
                 if trainer._unfrozen_idx >= 0:
                     unfreeze_one_layer_back(trainer.model, trainer._unfrozen_idx)
-                    rebuild_optimizer(trainer)
                     trainer._unfrozen_idx -= 1
+                    if epoch == frozen_epoch:
+                        rebuild_optimizer(trainer)
      
         model.add_callback("on_train_epoch_start", custom_epoch_start_callback)        
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)    
