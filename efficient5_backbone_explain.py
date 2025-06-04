@@ -123,7 +123,7 @@ yolo_models_dir = os.path.join(local_dev, 'models')
 img = torch.rand(1, 3, 640, 640)
 
 efficientnet_b5_yolo_config_path = os.path.join(yolo_models_dir, "b5.yaml")
-
+# 48,691,139
 model = YOLO(efficientnet_b5_yolo_config_path,verbose=False)
 print(model.info())
 feature_outputs = {}

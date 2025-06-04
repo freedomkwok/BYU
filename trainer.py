@@ -230,8 +230,10 @@ def run_optuna_tuning(dataset_name, args):
     else:
         study_name = "yolo_hpo"
         
+    args.study = study_name
+     
     resume = args.resume if args.resume is not None else False
-    n_trials = 1 if args.saved_model is not None or resume else 90
+    n_trials = 1 if args.saved_model is not None or resume else 120
     
     print(f"🎯Loading Study: {study_name} storage:{storage_name} \n")
     study = optuna.create_study(
@@ -240,7 +242,7 @@ def run_optuna_tuning(dataset_name, args):
         direction="minimize",
         load_if_exists=True,
     )
-    study.optimize(partial(objective, dataset_name=dataset_name, study=study_name, saved_model=args.saved_model, resume=resume, custom_model = args.custom_model, frozen_epoch = args.frozen_epoch, frozen_layer = args.frozen_layer), n_trials=n_trials)
+    study.optimize(partial(objective, args = args), n_trials=n_trials)
 
     best_trial = study.best_trial
     best_version = f"motor_detector_{dataset_name}_optuna_trial_{best_trial.number}"
@@ -293,12 +295,23 @@ def read_yaml(saved_model, resume):
     
     return fixed_args, model_str
         
-def objective(trial, dataset_name, study, saved_model=None, resume=False, custom_model = None, frozen_epoch= 0, frozen_layer = 10):
+def objective(trial, args):
     try:
         clean_cuda_info()
-            
+        dataset_name = args.dataset 
+        study = args.study
+        frozen_epoch = args.frozen_epoch 
+        frozen_layer = args.frozen_layer
+        saved_model = args.saved_model
+        resume = args.resume
+        custom_model = args.custom_model
+        unfreeze_epoch = args.unfreeze_epoch
+        
+        trial.suggest_int("frozen_epoch", frozen_epoch, frozen_epoch + 20)
+        trial.set_user_attr("frozen_layer", frozen_layer)    
+        
         trial_params = {
-            "batch": trial.suggest_categorical("batch161", [16]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch1", [1]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz640", [640]),
             "patience": trial.suggest_int("patience", 5, 22),
             # step 1
@@ -328,6 +341,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
         def suggest_optimizer_params(trial):
             optimizer_name = "SGD" #trial.suggest_categorical("optimizer", ["SGD", "AdamW"])
             
+            trial.set_user_attr("optimizer", optimizer_name)
             if optimizer_name == "AdamW":
                 weight_decay = trial.suggest_float("weight_decay", 1e-5, 0.05)
                 optimizer_params = {
@@ -342,7 +356,7 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
                     "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
                     "momentum": momentum
             }
-
+                
             return optimizer_params
 
         # _009_6000ada_trial_params = {
@@ -409,7 +423,6 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
             config=addtional_configs | trial_params,
             reinit=True
         )
-
                 # Define custom callback
         def custom_epoch_end_callback(trainer):
             now = time.time()
@@ -453,33 +466,60 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
 
             gc.collect()
             
+        def rebuild_optimizer(trainer):
+            use_adamw = True  # hardcoded or passed via args
+            optimizer_cls = torch.optim.AdamW if use_adamw else torch.optim.SGD
+
+            trainer.optimizer = optimizer_cls(
+                filter(lambda p: p.requires_grad, trainer.model.parameters()),
+                lr=trainer.args.lr0,
+                betas=(0.9, 0.999),  # Common for AdamW
+                weight_decay=getattr(trainer.args, 'weight_decay', 5e-4),
+            )
+
+            for pg in trainer.optimizer.param_groups:
+                if "initial_lr" not in pg:
+                    pg["initial_lr"] = pg["lr"]
+
+            print(f"🔁 Rebuilt optimizer with AdamW: {sum(p.requires_grad for p in trainer.model.parameters())} trainable groups.")
+            
+        def freeze_all_backbone(model, max_backbone_idx=4):
+            for i in range(max_backbone_idx + 1):
+                for param in model.model[i].parameters():
+                    param.requires_grad = False
+            print(f"❄️ Frozen model.model[0] to model.model[{max_backbone_idx}]")
+        
+        def unfreeze_one_layer_back(model, idx):
+            for param in model.model[idx].parameters():
+                param.requires_grad = True
+            print(f"🔓 Unfroze model.model[{idx}]")
+        
         def custom_epoch_start_callback(trainer):
             epoch = trainer.epoch
-            if trainer.epoch == frozen_epoch:
-                print(f"🔓 Unfreezing backbone at epoch {epoch}")
-                for i in range(frozen_layer):  # Adjust the range based on how many layers you initially froze
-                    for p in trainer.model.model[i].parameters():
-                        p.requires_grad = True
+            frozen_epoch = getattr(trainer, 'frozen_epoch', 10)
+            frozen_layer_index = getattr(trainer, 'frozen_layer', -1)
+            unfreeze_every = getattr(trainer, 'unfreeze_epoch', 5)
 
-                optimizer_name = trainer.args.optimizer
-                optimizer_cls = torch.optim.SGD if optimizer_name == 'SGD' else torch.optim.AdamW
-                trainer.optimizer = optimizer_cls(
-                    filter(lambda p: p.requires_grad, trainer.model.parameters()),
-                    lr=trainer.args.lr0,
-                    momentum=trainer.args.momentum if hasattr(trainer.args, 'momentum') else 0.9,
-                    weight_decay=trainer.args.weight_decay if hasattr(trainer.args, 'weight_decay') else 5e-4,
-                )
+            # 🧨 Skip all freezing logic if frozen_layer is -1
+            if frozen_layer_index < 0:
+                return
 
-                for pg in trainer.optimizer.param_groups:
-                    if "initial_lr" not in pg:
-                        pg["initial_lr"] = pg["lr"]
-                trainer._unfrozen = True
+            # Initial freeze (run once)
+            if not hasattr(trainer, "_unfrozen_idx"):
+                trainer._unfrozen_idx = frozen_layer_index
+                freeze_all_backbone(trainer.model, max_backbone_idx=trainer._unfrozen_idx)
+                rebuild_optimizer(trainer)
 
-        
-        model.add_callback("on_train_epoch_start", custom_epoch_start_callback)        
-        model.add_callback("on_train_epoch_end", custom_epoch_end_callback)
+            # Gradually unfreeze one block every N epochs
+            if epoch >= frozen_epoch and (epoch - frozen_epoch) % unfreeze_every == 0:
+                if trainer._unfrozen_idx >= 0:
+                    unfreeze_one_layer_back(trainer.model, trainer._unfrozen_idx)
+                    rebuild_optimizer(trainer)
+                    trainer._unfrozen_idx -= 1
      
-                
+        model.add_callback("on_train_epoch_start", custom_epoch_start_callback)        
+        model.add_callback("on_train_epoch_end", custom_epoch_end_callback)    
+            
         default_args = {
             "data":yaml_path,
             "project":yolo_weights_dir,
@@ -494,13 +534,6 @@ def objective(trial, dataset_name, study, saved_model=None, resume=False, custom
             "resume":resume,
             **trial_params,
         }
-        
-        ##frozen_layer init
-        if frozen_layer > 0:
-            for i in range(frozen_layer):
-                layer = model.model.model[i]
-                for param in layer.parameters():
-                    param.requires_grad = False
                     
         model.train(**default_args)
         
@@ -525,10 +558,11 @@ def parse_args():
     parser.add_argument("--dataset", type=str, help="(Optional) Dataset name")
     parser.add_argument("--epochs", type=str, help="(Optional) epochs")
     parser.add_argument("--saved_model", type=str, help="(Optional) saved_model")
-    parser.add_argument("--resume", type=bool, help="(Optional) resume")
+    parser.add_argument("--resume", type=bool, default = False, help="resume")
     parser.add_argument("--custom_model", type=str, help="(Optional) resume")
     parser.add_argument("--f_epoch", dest="frozen_epoch", type=int, default=10, help="Number of epochs to freeze the backbone (default: 0)")
     parser.add_argument("--f_layer", dest="frozen_layer", type=int, default=5, help="Number of layer to freeze the backbone (default: 0)")
+    parser.add_argument("--uf_epoch", dest="unfreeze_epoch", type=int, default=5, help="Number of epoch to unfreeze a layer the backbone (default: 0)")
     return parser.parse_args()
 
 def setup_wandb():
