@@ -498,11 +498,12 @@ def objective(trial, args):
 
             if epoch >= report_epoch and epoch % report_every == 0:
                 try:
+                    model.plots()
                     best_epoch, best_val_loss = plot_dfl_loss_curve(version_dir)
                     print(f"📈 [Epoch {epoch}] Best Val DFL Loss so far: {best_val_loss:.4f} at epoch {best_epoch}")
                 except Exception as e:
                     print(f"⚠️ Failed to plot DFL loss curve at epoch {epoch}: {e}")
-                
+            
             gc.collect()
             
         def rebuild_optimizer(trainer):
@@ -611,7 +612,6 @@ def main():
     print("Starting YOLO Optuna parameter tuning...")
     dataset_name = args.dataset or "shared_007"
 
-    
     pretrained_weights_path = select_pretrained_weights(dataset_name, args.custom_model)  ## load weight
 
     yaml_path, *_ = prepare_dataset(dataset_name) ## load file
