@@ -312,7 +312,7 @@ def objective(trial, args):
         
         frozen_epoch = trial.suggest_int("frozen_epoch", args.frozen_epoch, args.frozen_epoch + 20)
         unfreeze_every = trial.set_user_attr("unfreeze_every", args.unfreeze_every)
-        
+        optimizer_name = args.opt
         args_dict = vars(args)
         print("🧨args:", args_dict)
         
@@ -331,7 +331,7 @@ def objective(trial, args):
             "mosaic": trial.suggest_float("mosaic", 0.11575, 0.13),
             "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 15),
             # step 2
-            # "scale": trial.suggest_float("scale", 0.0, 0.25),
+            "scale": trial.suggest_float("scale", 0.10, 0.1),
             "translate": trial.suggest_float("translate", 0.115, 0.125),
             "hsv_h": trial.suggest_float("hsv_h", 0.0, 0.015),
             "hsv_s": trial.suggest_float("hsv_s", 0.0, 0.2),
@@ -341,13 +341,12 @@ def objective(trial, args):
             "mixup": trial.suggest_float("mixup", 0.2, 0.7),
             "cutmix": trial.suggest_float("cutmix", 0.05, 0.35),
             "epochs": trial.suggest_int("epochs", 100, 160),
-            "degrees": trial.suggest_float("degrees", 0.0, 25.0)
+            "degrees": trial.suggest_float("degrees", 0.0, 25.0),
+            "close_mosaic": trial.suggest_int("close_mosaic", frozen_epoch + 10, frozen_epoch + 100),
         }
         
         use_adamw = True  # hardcoded or passed via args
         def suggest_optimizer_params(trial):
-            optimizer_name = "AdamW" if use_adamw else "SGD" #trial.suggest_categorical("optimizer", ["SGD", "AdamW"])
-            
             trial.set_user_attr("optimizer", optimizer_name)
             if optimizer_name == "AdamW":
                 weight_decay = trial.suggest_float("weight_decay", 1e-5, 0.05)
@@ -423,11 +422,27 @@ def objective(trial, args):
         addtional_configs = {"study":study, "_model_base": model_base, "_device": gpu_name, "_dataset_name": dataset_name}
         print("model:", model_base, _pretrained_weights_path)
         
+        default_args = {
+            "data":yaml_path,
+            "project":yolo_weights_dir,
+            "name":f"{version}",
+            "exist_ok":True,
+    	    # "single_cls"=True,
+            "verbose":False,
+            "amp":True,
+            # "multi_scale"=True, #memory costly
+            "cos_lr":True, #memory costly
+            "device":0,
+            "resume":resume,
+            "multi_scale":True,
+            **trial_params,
+        }
+        
         wandb.init(
             project="BYU",
             name=f"{trial.number}",
             tags=[study, dataset_name, f'imgsz_{image_size}', f'batch_{batch_num}',f'{optimizer}', gpu_name, model_base],
-            config=addtional_configs | trial_params | args_dict,
+            config=addtional_configs | default_args | args_dict,
             reinit=True
         )
                 # Define custom callback
@@ -491,20 +506,26 @@ def objective(trial, args):
             gc.collect()
             
         def rebuild_optimizer(trainer):
-            optimizer_cls = torch.optim.AdamW if use_adamw else torch.optim.SGD
-
-            trainer.optimizer = optimizer_cls(
-                filter(lambda p: p.requires_grad, trainer.model.parameters()),
-                lr=trainer.args.lr0,
-                betas=(0.9, 0.999),  # Common for AdamW
-                weight_decay=getattr(trainer.args, 'weight_decay', 5e-4),
-            )
+            if optimizer_name == 'AdamW':
+                trainer.optimizer = torch.optim.AdamW(
+                    filter(lambda p: p.requires_grad, trainer.model.parameters()),
+                    lr=trainer.args.lr0,
+                    betas=(0.9, 0.999),
+                    weight_decay=getattr(trainer.args, 'weight_decay', 5e-4),
+                )
+                print("🔁 Rebuilt optimizer with AdamW")
+            else:
+                trainer.optimizer = torch.optim.SGD(
+                    filter(lambda p: p.requires_grad, trainer.model.parameters()),
+                    lr=trainer.args.lr0,
+                    momentum=getattr(trainer.args, 'momentum', 0.9),
+                    weight_decay=getattr(trainer.args, 'weight_decay', 5e-4),
+                )
+                print("🔁 Rebuilt optimizer with SGD")
 
             for pg in trainer.optimizer.param_groups:
                 if "initial_lr" not in pg:
                     pg["initial_lr"] = pg["lr"]
-
-            print(f"🔁 Rebuilt optimizer with AdamW: {sum(p.requires_grad for p in trainer.model.parameters())} trainable groups.")
             
         def freeze_all_backbone(model, max_backbone_idx=4):
             for i in range(max_backbone_idx + 1):
@@ -541,24 +562,12 @@ def objective(trial, args):
         model.add_callback("on_train_epoch_start", custom_epoch_start_callback)        
         model.add_callback("on_train_epoch_end", custom_epoch_end_callback)    
             
-        default_args = {
-            "data":yaml_path,
-            "project":yolo_weights_dir,
-            "name":f"{version}",
-            "exist_ok":True,
-    	    # "single_cls"=True,
-            "verbose":False,
-            "amp":True,
-            # "multi_scale"=True, #memory costly
-            "cos_lr":True, #memory costly
-            "device":0,
-            "resume":resume,
-            **trial_params,
-        }
-                    
         model.train(**default_args)
         
+        model.train(**default_args, resume=True, scale = 0.5)
+        
         result = plot_dfl_loss_curve(version_dir)
+        
         wandb.finish()
         
         if result is None:
@@ -581,6 +590,7 @@ def parse_args():
     parser.add_argument("--saved_model", type=str, help="(Optional) saved_model")
     parser.add_argument("--resume", type=bool, default = False, help="resume")
     parser.add_argument("--custom_model", type=str, help="(Optional) custom_model", default="b5")
+    parser.add_argument("--opt", type=str, help="(Optional) custom_model", default="AdamW")
     parser.add_argument("--f_layer", dest="frozen_layer", type=int, default=5, help="Number of layer to freeze the backbone (default: 0)")
     parser.add_argument("--f_epoch", dest="frozen_epoch", type=int, default=20, help="Number of epochs to freeze the backbone (default: 0)")
     parser.add_argument("--uf_every", dest="unfreeze_every", type=int, default=5, help="Number of epoch to unfreeze a layer the backbone (default: 0)")
