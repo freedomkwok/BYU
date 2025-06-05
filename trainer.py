@@ -312,14 +312,16 @@ def objective(trial, args):
         
         frozen_epoch = trial.suggest_int("frozen_epoch", args.frozen_epoch, args.frozen_epoch + 20)
         unfreeze_every = trial.set_user_attr("unfreeze_every", args.unfreeze_every)
+        pre_optimizer_name = args.pre_opt
         optimizer_name = args.opt
+        
         args_dict = vars(args)
         print("🧨args:", args_dict)
         
         trial_params = {
-            "batch": trial.suggest_categorical("batch48", [48]), #600ada: 200 88
+            "batch": trial.suggest_categorical("batch16", [16]), #600ada: 200 88
             "imgsz": trial.suggest_categorical("imgsz640", [640]),
-            "patience": trial.suggest_int("patience", 5, 22),
+            "patience": trial.suggest_int("patience", 8, 18),
             # step 1
             # "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
             # "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-4),  # Regularization
@@ -329,9 +331,8 @@ def objective(trial, args):
             "dfl": trial.suggest_float("dfl", 0.05, 1.8),
             # "momentum": trial.suggest_float("momentum", 0.4, 0.98),   # For SGD or Adam
             "mosaic": trial.suggest_float("mosaic", 0.11575, 0.13),
-            "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 15),
+            "warmup_epochs": trial.suggest_int("warmup_epochs", 5, 15),
             # step 2
-            "scale": trial.suggest_float("scale", 0.10, 0.1),
             "translate": trial.suggest_float("translate", 0.115, 0.125),
             "hsv_h": trial.suggest_float("hsv_h", 0.0, 0.015),
             "hsv_s": trial.suggest_float("hsv_s", 0.0, 0.2),
@@ -345,53 +346,25 @@ def objective(trial, args):
             "close_mosaic": trial.suggest_int("close_mosaic", frozen_epoch + 10, frozen_epoch + 100),
         }
         
-        use_adamw = True  # hardcoded or passed via args
         def suggest_optimizer_params(trial):
-            trial.set_user_attr("optimizer", optimizer_name)
-            if optimizer_name == "AdamW":
+            trial.set_user_attr("optimizer", pre_optimizer_name)
+            if pre_optimizer_name == "AdamW":
                 weight_decay = trial.suggest_float("weight_decay", 1e-5, 0.05)
                 optimizer_params = {
-                    "optimizer": optimizer_name,
+                    "optimizer": pre_optimizer_name,
                     "lr0": trial.suggest_float("lr0", 1e-5, 1e-3, log=True),
                     "weight_decay": weight_decay
                 }
             else:  # SGD fallback or other optimizer
                 momentum = trial.suggest_float("momentum", 0.4, 0.98)
                 optimizer_params = {
-                    "optimizer": optimizer_name,
+                    "optimizer": pre_optimizer_name,
                     "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
                     "momentum": momentum
             }
                 
             return optimizer_params
 
-        # _009_6000ada_trial_params = {
-        #     "batch": trial.suggest_categorical("batch_o132combo", [72, 80, 108, 120, 136]), #600ada: 200 88
-        #     "imgsz": trial.suggest_categorical("imgsz640", [640]),
-        #     "patience": trial.suggest_int("patience", 5, 22),
-        #     # step 1
-        #     # "lr0": trial.suggest_float("lr0", 0.0087, 0.0095, log=True),
-        #     # "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-4),  # Regularization
-        #     "lrf": trial.suggest_float("lrf", 0.05, 0.07),
-        #     "box": trial.suggest_float("box", 9.45, 9.8),   #7.7
-        #     "cls": trial.suggest_float("cls", 0.05, 0.2), #0.55
-        #     "dfl": trial.suggest_float("dfl", 0.05, 1.8),
-        #     # "momentum": trial.suggest_float("momentum", 0.4, 0.98),   # For SGD or Adam
-        #     "mosaic": trial.suggest_float("mosaic", 0.11575, 0.15),
-        #     "warmup_epochs": trial.suggest_int("warmup_epochs", 9, 15),
-        #     # step 2
-        #     # "scale": trial.suggest_float("scale", 0.0, 0.25),
-        #     "translate": trial.suggest_float("translate", 0.115, 0.125),
-        #     "hsv_h": trial.suggest_float("hsv_h", 0.0, 0.015),
-        #     "hsv_s": trial.suggest_float("hsv_s", 0.0, 0.2),
-        #     "flipud": trial.suggest_float("flipud", 0.0, 0.4),
-        #     "fliplr": trial.suggest_float("fliplr", 0.08, 0.4),
-        #     "bgr": trial.suggest_float("bgr", 0.0, 1.0),
-        #     "mixup": trial.suggest_float("mixup", 0.2, 0.5),
-        #     "cutmix": trial.suggest_float("cutmix", 0.2, 0.5),
-        #     "epochs": trial.suggest_int("epochs", 120, 150),
-        #     "degrees": trial.suggest_float("degrees", 0.0, 25.0)
-        # }   
         _009_6000ada_trial_params = trial_params
         _yaml, _model = read_yaml(saved_model, resume) if saved_model is not None else (None, None) ##could be None
         trial_params = _yaml if saved_model is not None else  {**_009_6000ada_trial_params, **suggest_optimizer_params(trial)}
@@ -434,7 +407,6 @@ def objective(trial, args):
             "cos_lr":True, #memory costly
             "device":0,
             "resume":resume,
-            "multi_scale":True,
             **trial_params,
         }
         
@@ -565,7 +537,8 @@ def objective(trial, args):
             
         model.train(**default_args)
         
-        model.train(**default_args, resume=True, scale = 0.5)
+        default_args.update(dict(resume=True, multi_scale=True, scale=0.5))
+        model.train(**default_args)
         
         result = plot_dfl_loss_curve(version_dir)
         
@@ -591,6 +564,7 @@ def parse_args():
     parser.add_argument("--saved_model", type=str, help="(Optional) saved_model")
     parser.add_argument("--resume", type=bool, default = False, help="resume")
     parser.add_argument("--custom_model", type=str, help="(Optional) custom_model", default="b5")
+    parser.add_argument("--pre_opt", type=str, help="(Optional) custom_model", default="SGD")
     parser.add_argument("--opt", type=str, help="(Optional) custom_model", default="AdamW")
     parser.add_argument("--f_layer", dest="frozen_layer", type=int, default=5, help="Number of layer to freeze the backbone (default: 0)")
     parser.add_argument("--f_epoch", dest="frozen_epoch", type=int, default=20, help="Number of epochs to freeze the backbone (default: 0)")
