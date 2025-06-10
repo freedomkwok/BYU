@@ -21,3 +21,10 @@ Alternatively, train multiple models with different input sizes (e.g., imgsz = [
 	3.	How to handle targets that are too large or too small?
 	•	Too large: Use an attention-based preprocessing strategy — resize overly large images to 640×640 using multiple downscale ratios like [0.8, 0.6, 0.5, 0.4], then feed to the model. Include both the scaled and original versions during training, and map predictions back to original coordinates after inference ✅ (My current method)
 	•	Too small: No special handling — rely on the model’s built-in small-object detection capability
+
+
+	!pip install /kaggle/input/pip-install-pyg/torch_spline_conv-1.2.2+pt25cu124-cp310-cp310-linux_x86_64.whl
+!pip install /kaggle/input/pip-install-pyg/torch_sparse-0.6.18+pt25cu124-cp310-cp310-linux_x86_64.whl
+!pip install /kaggle/input/pip-install-pyg/pyg_lib-0.4.0+pt25cu124-cp310-cp310-linux_x86_64.whl
+!pip install /kaggle/input/pip-install-pyg/torch_cluster-1.6.3+pt25cu124-cp310-cp310-linux_x86_64.whl
+!pip install /kaggle/input/pip-install-pyg/torch_geometric-2.6.1-py3-none-any.whl
