@@ -154,3 +154,36 @@ for batch in loader:
 | --------- | ---------------------------------------------- |
 | Training  | `[384-d BiFPN feature] + normalized [x, y, z]` |
 | Inference | **Exactly the same format**                    |
+
+LINK PREDICTION
+NODE CLASSIFICATION
+CLUSTERING
+GRAPH CLASSIFICATION 
+
+Matrix A (n x n)       | Matrix B (n x d)                               | Matrix W (d x d)   | Output (n x 1)
+-----------------------|------------------------------------------------|--------------------|----------------
+c11 c12 c13 c14 ...    | 25   male    teacher   ...                    |                    | f(x1)
+c21 c22 c23 c24 ...    | 23   male    doctor     ...                    |        W           | f(x2)
+c31 c32 c33 c34 ...    | 27   female  scientist  ...                    |                    | f(x3)
+c41 c42 c43 c44 ...    | 31   male    designer   ...                    |                    | f(x4)
+...                    | ...                                            |                    | ...
+
+
+
+f(x) = A X W
+A  =  n * n
+X = n * d (where d is the feature, dimision)
+W = d * d 
+
+Graph Attention Network (GAT)
+| Model                      | Key Feature                                   | Year  |
+| -------------------------- | --------------------------------------------- | ----- |
+| **GAT**                    | Node-level attention over neighbors           | 2018  |
+| **GATv2**                  | Better attention expressiveness               | 2021  |
+| **Graphormer**             | Transformer-like GNN for whole-graph tasks    | 2021  |
+| **SAN (Sparse Attn)**      | Sparse attention on large graphs              | 2021  |
+| **GT (Graph Transformer)** | Combines positional encoding + full attention | 2020+ |
+
+PyTorch Geometric (PyG): Has GATConv, GATv2Conv, TransformerConv
+DGL (Deep Graph Library): Also supports attention GNNs.
+TorchDrug and GraphGym for more structured GNN pipelines.

@@ -2,6 +2,8 @@
 *.pt
 
 # Ignore all subfolders in models/ but not the folder itself
+debug/
+runs/
 yolo_dataset/
 yolo_dataset2/
 yolo_dataset3/

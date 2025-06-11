@@ -1,6 +1,7 @@
 
 # Fuse features	融合特征 / 特征整合 / 特征合并
 
+
 🔹 1. Bottleneck
     A bottleneck is a type of structure that compresses and then expands the feature channels. It’s common in ResNet, YOLOv5’s C3, and other deep nets.
     Input → Conv1x1 (reduce channels)
@@ -188,3 +189,35 @@ This gives:
 ✅ Fast convergence
 ✅ Stable gradients
 ✅ Maximum performance when needed
+
+
+| Layer            | YOLO Stack           | DETR Stack                |
+| ---------------- | -------------------- | ------------------------- |
+| Model family     | YOLOv8, v5, v4...    | DETR, DINO, RT-DETRv2     |
+| Framework/tool   | **Ultralytics**      | **DEIM** (training layer) |
+| Assignment logic | SimOTA, Task-Aligned | Hungarian, DEIM           |
+
+
+| Term          | What it Is                 | Role in Architecture                                              |
+| ------------- | -------------------------- | ----------------------------------------------------------------- |
+| **RT-DETRv2** | A **full object detector** | Includes **backbone + neck + transformer + detection head**       |
+| **D-FINE**    | A **variant of RT-DETRv2** | Uses special **head**: FDR (Fine-grained Distribution Refinement) |
+| **DEIM**      | A **training framework**   | Improves convergence & matching in **DETR-style models**          |
+
++-----------------------+
+| Multi-head Attention  |
+| + residual + norm     |
++-----------------------+
+| Feed Forward Network  |  ← FFN here
+| + residual + norm     | 
++-----------------------+
+
+ablation studies and attention evaluation. => Papers like Hybrid-FPN-AACNet and CTA-Net show exactly this methodology.
+    attention maps or entropy scores
+2. 🎯 Attention Map Evaluation: Is it doing what you expect?
+You can visualize self-attention — showing which parts of the image each token attends to. Useful for:
+Qualitative insight: Does the attention focus on relevant object parts?
+Quantitative metrics:
+Mean attention entropy: Low entropy means more confident focus.
+Compositionality scores: Do attention maps capture integrated object structure? Transformers often have higher compositionality than CNNs 
+
