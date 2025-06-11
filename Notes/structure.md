@@ -116,3 +116,58 @@ Postprocess (NMS)
     Often used in attention-based or hybrid models
     Keeps shape consistency across layers
     Used in some Transformer-FPN hybrids
+
+潜在特征 Latent
+| Task                    | Encoder                                    | Decoder                                  |
+| ----------------------- | ------------------------------------------ | ---------------------------------------- |
+| **Machine Translation** | Transformer encoder (multi-head self-attn) | Transformer decoder (attends to encoder) |
+| **Image Captioning**    | CNN (e.g., ResNet)                         | Transformer or LSTM that generates text  |
+| **Autoencoder**         | Conv or Dense layers                       | Mirror of encoder (e.g., upsample)       |
+| **YOLOv8/YOLOv5**       | Backbone (encoder)                         | Neck + head (acts as decoder)            |
+| **Stable Diffusion**    | UNet encoder (down)                        | UNet decoder (up) + attention            |
+
+| Data Type | Encoder Input Shape | Encoder Output → Decoder Input         |
+| --------- | ------------------- | -------------------------------------- |
+| Text      | `[B, L]` token IDs  | `[B, L, D]`                            |
+| Image     | `[B, 3, H, W]`      | `[B, C', H/8, W/8]`                    |
+| Audio     | `[B, T]` waveform   | `[B, F, T']` (spectrogram or features) |
+
+📦 Shape Meaning: [B, L, D]
+| Dimension | Meaning                  | Example                        |
+| --------- | ------------------------ | ------------------------------ |
+| `B`       | Batch size               | e.g., 16 samples per batch     |
+| `L`       | Sequence length (tokens) | e.g., 128 tokens per sentence  |
+| `D`       | Embedding or hidden size | e.g., 768 (BERT), 4096 (LLaMA) |
+
+Input:  [B, 3, 256, 256] 194,304
+↓
+Encoder: [B, 512, 16, 16] 131,072
+↓
+Decoder: [B, num_classes, 256, 256]
+
+| Scenario                           | Optimizer That Often Performs Better | Why                                                                                          |
+| ---------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| **Training from scratch**          | ✅ **SGD (+ momentum)**               | Generalizes better, less prone to overfitting, especially on large datasets like ImageNet    |
+| **Fine-tuning pretrained models**  | ✅ **AdamW**                          | Faster convergence, handles layer-wise learning rate scaling and pre-trained features better |
+| **Limited compute / fewer epochs** | ✅ **AdamW**                          | Faster early learning and adaptation                                                         |
+| **Large batch training**           | ✅ **SGD (with tweaks)**              | More stable when tuned properly                                                              |
+| **Transformer / NLP models**       | ✅ **AdamW**                          | Designed for adaptive updates on sparse gradients                                            |
+
+
+🔍 Why SGD Is Good for Training from Scratch
+  Has a strong bias toward flat minima, which tend to generalize better
+  Requires careful learning rate schedules (e.g., cosine decay or step LR)
+  Slower to converge, but leads to better final performance in many vision models (e.g., ResNet, EfficientNet)
+
+🔍 Why AdamW Works Well for Fine-Tuning
+  Learns quickly even if some layers are already “close” to the right features
+  Uses adaptive learning rates per parameter, which helps when some layers need large updates and others don't
+  Works better with lower learning rates on pretrained backbones, and higher rates on newly added heads
+
+🧠 Fine-Tuning: When to Add New Layers vs Reuse Existing
+| Scenario                                                                 | Add New Layer? | Explanation                                                                                              |
+| ------------------------------------------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------------- |
+| **Same task, same output shape**                                         | ❌ No           | If you're continuing the same task (e.g., classification on ImageNet), you can reuse all layers directly |
+| **Same task, different output classes**                                  | ✅ Yes          | Replace the final classification layer (e.g., 1000 → 5 classes)                                          |
+| **Different task (e.g., from classification to detection/segmentation)** | ✅ Yes          | You keep the encoder (backbone), but replace/add task-specific heads                                     |
+| **Transfer learning from vision to language**                            | ✅ Yes          | You’d need a whole new decoder or head for the new domain                                                |
