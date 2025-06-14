@@ -171,3 +171,4 @@ Decoder: [B, num_classes, 256, 256]
 | **Same task, different output classes**                                  | ✅ Yes          | Replace the final classification layer (e.g., 1000 → 5 classes)                                          |
 | **Different task (e.g., from classification to detection/segmentation)** | ✅ Yes          | You keep the encoder (backbone), but replace/add task-specific heads                                     |
 | **Transfer learning from vision to language**                            | ✅ Yes          | You’d need a whole new decoder or head for the new domain                                                |
+
